@@ -1,6 +1,6 @@
 {
   "name": "nexo-iptv",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Reproductor IPTV de escritorio para Windows 11",
   "type": "module",
@@ -11,7 +11,7 @@
     "start": "npm run build && electron .",
     "test": "node --test tests/*.test.js",
     "test:ui": "node tests/ui.mjs",
-    "package:win": "npm run build && electron-packager . Nexo-IPTV --platform=win32 --arch=x64 --out=release --overwrite --asar --ignore=\"^/(src|tests|release|artifacts|.git)(/|$)\"",
+    "package:win": "npm run build && electron-packager . Nexo-IPTV --platform=win32 --arch=x64 --out=release --overwrite --asar.unpack=\"**/{ffmpeg-static,ffprobe-static}/**\" --ignore=\"^/(src|tests|release|artifacts|.git)(/|$)\"",
     "test:hls": "node tests/ui.mjs --hls",
     "test:desktop": "npm run build && electron tests/desktop.cjs"
   },
@@ -22,6 +22,8 @@
     "vite": "^8.3.6"
   },
   "dependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
     "hls.js": "^1.7.4",
     "mpegts.js": "^1.8.2"
   }

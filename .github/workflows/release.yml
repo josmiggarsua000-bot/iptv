@@ -5,7 +5,7 @@ on:
       tag:
         description: Existing version tag to build
         required: true
-        default: v0.4.0
+        default: v0.5.0
   push:
     tags: ['v*']
 permissions:
@@ -34,6 +34,13 @@ jobs:
         run: npm run test:desktop
       - name: Package Windows application
         run: npm run package:win
+      - name: Verify unpacked multimedia engines
+        shell: pwsh
+        run: |
+          & release/Nexo-IPTV-win32-x64/resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg.exe -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & release/Nexo-IPTV-win32-x64/resources/app.asar.unpacked/node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compress and checksum
         shell: pwsh
         run: |

@@ -273,29 +273,54 @@ $('#close-series').onclick = () => { episodeVersion++; $('#series-dialog').close
 $('#series-dialog').addEventListener('cancel', () => { episodeVersion++; });
 function stopPlayback() {
   playbackVersion++; player?.destroy(); player = null; current = null;
-  video.hidden = true; $('#track-controls').hidden = true;
+  video.hidden = true; $('#track-controls').hidden = true; $('#player-settings-toggle').setAttribute('aria-expanded', 'false'); $('#compat-bar').hidden = true;
   $('#watch-area').hidden = true; $('#placeholder').hidden = false; epg.renderPlaying();
 }
 function updateTracks() {
-  const audio = player?.audioTracks() || [], subtitles = player?.subtitleTracks() || [];
+  const audio = player?.audioTracks() || [], subtitles = player?.subtitleTracks() || [], videos = player?.videoTracks() || [];
+  $('#video-track').replaceChildren();
+  for (const track of videos) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; $('#video-track').append(option); }
+  if (!videos.length) $('#video-track').append(node('option', '', 'Video automático'));
+  $('#video-track').disabled = !videos.length;
+  $('#compat-bar').hidden = !player?.isCompatibility();
+  $('#compat-enable').disabled = !!player?.isCompatibility(); $('#compat-enable').textContent = player?.isCompatibility() ? 'Motor compatible activo' : 'Motor compatible AC3 / DTS';
   $('#audio-track').replaceChildren();
+  if (audio.length) { const off = node('option', '', 'Desactivado (sin audio)'); off.value = 'off'; off.selected = player?.audioDisabled(); $('#audio-track').append(off); }
   for (const track of audio) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; $('#audio-track').append(option); }
   if (!audio.length) $('#audio-track').append(node('option', '', 'Automático / no expuestas'));
   $('#audio-track').disabled = !audio.length;
   $('#subtitle-track').replaceChildren();
   const off = node('option', '', 'Desactivados'); off.value = ''; $('#subtitle-track').append(off);
-  for (const track of subtitles) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; $('#subtitle-track').append(option); }
-  $('#track-note').textContent = audio.length ? 'Si una pista no suena, prueba otra: algunos códecs necesitan VLC.' : 'El motor no expone pistas alternativas para este archivo. Puedes cargar SRT/VTT o usar VLC para audio dual, AC3/DTS y subtítulos integrados no compatibles.';
+  for (const track of subtitles) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; option.disabled = !!track.disabled; $('#subtitle-track').append(option); }
+  updateClock();
+  $('#track-note').textContent = player?.isCompatibility() ? 'Compatibilidad local: audio convertido a AAC. Las pistas de texto integradas se muestran aquí. Los subtítulos gráficos requieren un reproductor externo.' : audio.length ? 'Si una pista no suena, prueba otra: algunos códecs necesitan VLC.' : 'El motor no expone pistas alternativas para este archivo. Puedes cargar SRT/VTT o usar VLC para audio dual, AC3/DTS y subtítulos integrados no compatibles.';
 }
 function playItem(item) {
   stopPlayback(); current = item;
   const version = playbackVersion;
-  $('#watch-area').hidden = false; $('#track-controls').hidden = false; $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
+  $('#watch-area').hidden = false; $('#track-controls').hidden = true; $('#player-settings-toggle').setAttribute('aria-expanded', 'false'); $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
   player = createPlayer(video, { status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
   player.play(item, account()?.config.url); updateTracks();
   if (item.kind === 'live') epg.showPlaying();
   renderItems(); $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+function updateClock() {
+  if (!player?.isCompatibility()) return;
+  const position = player.position(), duration = player.duration();
+  const clock = value => { const seconds = Math.max(0, Math.floor(value || 0)); return `${Math.floor(seconds / 3600) ? Math.floor(seconds / 3600) + ':' : ''}${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; };
+  $('#compat-clock').textContent = `${clock(position)} / ${duration ? clock(duration) : 'EN VIVO'}`;
+  $('#compat-seek').max = duration || 1; $('#compat-seek').disabled = !duration; $('#compat-seek').value = position;
+  $('#compat-play').textContent = video.paused ? '▶' : 'Ⅱ'; $('#compat-volume').value = video.volume;
+}
+for (const event of ['timeupdate', 'play', 'pause', 'volumechange', 'loadedmetadata']) video.addEventListener(event, updateClock);
+$('#compat-enable').onclick = () => player?.enableCompatibility();
+$('#compat-play').onclick = () => { if (video.paused) void video.play().catch(() => {}); else video.pause(); };
+$('#compat-volume').oninput = () => { video.volume = Number($('#compat-volume').value); video.muted = video.volume === 0; };
+$('#compat-seek').onchange = () => player?.seek(Number($('#compat-seek').value));
+$('#player-settings-toggle').onclick = () => { const open = $('#track-controls').hidden; $('#track-controls').hidden = !open; $('#player-settings-toggle').setAttribute('aria-expanded', String(open)); };
+$('#settings-close').onclick = () => { $('#track-controls').hidden = true; $('#player-settings-toggle').setAttribute('aria-expanded', 'false'); $('#player-settings-toggle').focus(); };
+$('#player').addEventListener('keydown', event => { if (event.key === 'Escape' && !$('#track-controls').hidden) { event.preventDefault(); $('#settings-close').click(); } });
+$('#video-track').onchange = () => player?.selectVideo($('#video-track').value);
 $('#audio-track').onchange = () => player?.selectAudio($('#audio-track').value);
 $('#subtitle-track').onchange = () => player?.selectSubtitle($('#subtitle-track').value);
 $('#subtitle-file').onchange = async () => {
@@ -333,7 +358,9 @@ $('#local-refresh-file').onchange = async () => {
   finally { busy = false; $('#local-refresh-file').value = ''; render(); }
 };
 $('#close-player').onclick = () => { stopPlayback(); renderItems(); };
-$('#fullscreen').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#player').requestFullscreen(); } catch { $('#playback-status').textContent = 'No se pudo activar la pantalla completa.'; } };
+const toggleFullscreen = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#player').requestFullscreen(); } catch { $('#playback-status').textContent = 'No se pudo activar la pantalla completa.'; } };
+$('#fullscreen').onclick = toggleFullscreen;
+$('#player-fullscreen').onclick = toggleFullscreen;
 window.addEventListener('beforeunload', () => { player?.destroy(); multiscreen.stopAll(); });
 try {
   const loaded = await readState();

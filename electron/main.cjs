@@ -3,10 +3,19 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const { fetchText } = require('./download.cjs');
 const { spawn } = require('node:child_process');
+const { createMediaEngine } = require('./media-engine.cjs');
+const ffmpegPath = require('ffmpeg-static');
+const ffprobePath = require('ffprobe-static').path;
+let mediaEngine;
 
 app.whenReady().then(() => {
+  mediaEngine = createMediaEngine({ ffmpegPath, ffprobePath, fetchImpl: (url, options) => net.fetch(url, options) });
   const stateFile = path.join(app.getPath('userData'), 'accounts.enc');
   const checkSender = event => { if (event.senderFrame !== event.sender.mainFrame) throw new Error('Origen no permitido.'); };
+  ipcMain.handle('media:prepare', (event, url) => { checkSender(event); return mediaEngine.prepare(event.sender.id, url); });
+  ipcMain.handle('media:source', (event, id, options) => { checkSender(event); return mediaEngine.source(event.sender.id, id, options); });
+  ipcMain.handle('media:cues', (event, id, cursors) => { checkSender(event); return mediaEngine.cues(event.sender.id, id, cursors); });
+  ipcMain.handle('media:stop', (event, id) => { checkSender(event); mediaEngine.stop(event.sender.id, id); });
   ipcMain.handle('state:read', async event => {
     checkSender(event);
     let bytes;
@@ -51,4 +60,5 @@ app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 });
+app.on('before-quit', () => { void mediaEngine?.close(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

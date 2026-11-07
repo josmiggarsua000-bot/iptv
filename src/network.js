@@ -1,5 +1,5 @@
 export async function requestText(address, kind) {
-  if (window.desktop) return window.desktop.fetchPlaylist(address, kind);
+  if (window.desktop?.fetchPlaylist) return window.desktop.fetchPlaylist(address, kind);
   const response = await fetch(address, { signal: AbortSignal.timeout(120000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}. El proveedor no pudo completar la solicitud.`);
   let body = response.body;

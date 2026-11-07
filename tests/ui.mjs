@@ -1,3 +1,6 @@
+import { createMediaEngine } from '../electron/media-engine.cjs';
+import ffmpeg from 'ffmpeg-static';
+import probe from 'ffprobe-static';
 import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -7,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5179', '--strictPort'], { stdio: 'pipe' });
-let browser, fixture, hlsDir;
+let browser, fixture, hlsDir, engine;
 try {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Vite no inició')), 15000);
@@ -55,7 +58,16 @@ try {
   fixture = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/epg.xml' || url.pathname === '/xmltv.php') {
+    if (url.pathname === '/ac3.mkv') {
+      const bytes = await readFile('tests/fixtures/dual-ac3-subtitles.mkv');
+      const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range || '');
+      const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+      if (start >= bytes.length) { res.writeHead(416); res.end(); return; }
+      res.setHeader('Content-Type', 'video/x-matroska'); res.setHeader('Accept-Ranges', 'bytes');
+      if (range) { res.statusCode = 206; res.setHeader('Content-Range', `bytes ${start}-${end}/${bytes.length}`); }
+      res.setHeader('Content-Length', end-start+1); res.end(bytes.subarray(start,end+1));
+    }
+    else if (url.pathname === '/epg.xml' || url.pathname === '/xmltv.php') {
       epgQueries.push(url.searchParams.get('username'));
       const time = ms => new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0,14) + ' +0000';
       res.setHeader('Content-Type', 'application/xml');
@@ -144,6 +156,8 @@ try {
   await page.getByRole('button', { name: 'Reproducir Noticias Uno', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
   assert.match(await page.locator('#playback-status').textContent(), /Reproduciendo/);
+  await page.locator('#player-settings-toggle').click();
+  assert.equal(await page.locator('#player').evaluate(player => player.contains(document.querySelector('#track-controls'))), true);
   await page.locator('#subtitle-file').setInputFiles({ name: 'es.srt', mimeType: 'text/plain', buffer: Buffer.from('1\n00:00:00,000 --> 00:01:00,000\nSubtítulo de prueba') });
   await page.waitForFunction(() => [...document.querySelector('#video').textTracks].some(t => t.mode === 'showing' && t.cues?.length));
   assert.match(await page.locator('#subtitle-track').textContent(), /es.srt/);
@@ -350,10 +364,15 @@ try {
     await addM3u('Audio dual', `#EXTM3U\n#EXTINF:-1,Audio bilingüe\nhttp://127.0.0.1:${port}/dual-master.m3u8`);
     await goto('live');
     await page.getByRole('button', { name: 'Reproducir Audio bilingüe', exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('#audio-track').options.length === 2);
+    await page.waitForFunction(() => document.querySelector('#audio-track').options.length === 3);
+    await page.locator('#player-settings-toggle').click();
     await page.locator('#audio-track').selectOption('1');
     await page.waitForFunction(() => document.querySelector('#audio-track').value === '1' && document.querySelector('#video').currentTime > 0.5);
     assert.match(await page.locator('#audio-track option:checked').textContent(), /spa/);
+    await page.locator('#player-fullscreen').click();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+    assert.equal(await page.locator('#track-controls').isVisible(), true);
+    await page.locator('#player-fullscreen').click();
     await page.waitForFunction(() => document.querySelector('#subtitle-track').options.length > 1);
     await page.locator('#subtitle-track').selectOption('hls:0');
     await page.waitForFunction(() => [...document.querySelector('#video').textTracks].some(t => t.mode === 'showing' && t.cues?.length));
@@ -362,7 +381,8 @@ try {
     await goto('movie');
     await page.getByRole('button', { name: 'Reproducir Película bilingüe', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#video').currentTime > 0.5);
-    assert.equal(await page.locator('#audio-track option').count(), 2);
+    assert.equal(await page.locator('#audio-track option').count(), 3);
+    await page.locator('#player-settings-toggle').click();
     await page.locator('#audio-track').selectOption('1');
     await page.waitForFunction(() => document.querySelector('#video').audioTracks[1].enabled);
     assert.match(await page.locator('#audio-track option:checked').textContent(), /spa/);
@@ -372,6 +392,33 @@ try {
     await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
     console.log('HLS H.264, selección de audio bilingüe y MPEG-TS directo: OK');
   }
+  // Exercise the actual local AC3 engine and player UI, without running uploaded binaries.
+  engine = createMediaEngine({ ffmpegPath: ffmpeg, ffprobePath: probe.path });
+  await page.exposeFunction('testMediaPrepare', url => engine.prepare(1, url));
+  await page.exposeFunction('testMediaSource', (id, options) => engine.source(1, id, options));
+  await page.exposeFunction('testMediaCues', (id, cursors) => engine.cues(1, id, cursors));
+  await page.exposeFunction('testMediaStop', id => engine.stop(1, id));
+  await page.evaluate(() => { window.desktop = { mediaPrepare: window.testMediaPrepare, mediaSource: window.testMediaSource, mediaCues: window.testMediaCues, mediaStop: window.testMediaStop }; });
+  await addM3u('AC3 integrado', `#EXTM3U\n#EXTINF:-1 group-title="Películas",Prueba AC3\nhttp://127.0.0.1:${port}/ac3.mkv`);
+  await goto('movie');
+  await page.getByRole('button', { name: 'Reproducir Prueba AC3', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('#compat-bar').hidden && document.querySelector('#video').currentTime > 0.2);
+  await page.locator('#player-settings-toggle').click();
+  assert.match(await page.locator('#audio-track option:checked').textContent(), /Español/);
+  await page.locator('#audio-track').selectOption('compat:2');
+  await page.waitForFunction(() => document.querySelector('#audio-track').value === 'compat:2' && document.querySelector('#video').currentTime > 0.3);
+  await page.locator('#subtitle-track').selectOption('compat-s:3');
+  await page.waitForFunction(() => [...document.querySelector('#video').textTracks].some(t => t.mode === 'showing' && t.cues?.length));
+  await page.locator('#player-fullscreen').click();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+  assert.equal(await page.locator('#track-controls').isVisible(), true);
+  await page.screenshot({ path: 'artifacts/audio-ac3-integrado.png' });
+  await page.locator('#player-fullscreen').click();
+  await page.locator('#settings-close').click();
+  await page.locator('#compat-seek').fill('4');
+  await page.locator('#compat-seek').dispatchEvent('change');
+  await page.waitForFunction(() => document.querySelector('#compat-clock').textContent.startsWith('00:04'));
+  console.log('AC3: reproducción, español/inglés, subtítulos integrados, búsqueda y menú dentro de pantalla completa: OK');
   await page.setViewportSize({ width: 1000, height: 700 });
   await page.locator('#change-account').click();
   await page.screenshot({ path: 'artifacts/cyberpunk-1000px.png', fullPage: true });
@@ -379,6 +426,7 @@ try {
   console.log('UI: cuentas y migración, EPG XMLTV, vencimiento, Refresh manual/automático y opcional, SRT, 4 pantallas con audio exclusivo, cine y episodios: OK');
 } finally {
   await browser?.close();
+  await engine?.close();
   if (fixture) await new Promise(resolve => fixture.close(resolve));
   vite.kill();
   if (hlsDir) await rm(hlsDir, { recursive: true, force: true });

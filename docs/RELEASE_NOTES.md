@@ -1,14 +1,13 @@
-## Nexo IPTV v0.4.0 · Cuentas, catálogo y guía de televisión
+## Nexo IPTV v0.5.0 · Audio y subtítulos dentro del reproductor
 
-- Cuentas en tarjetas rectangulares de dos columnas, icono de usuario, Editar, Entrar y Actualizar.
-- Edición del nombre, conexión o tipo de cuenta sin duplicarla. Se valida una fuente nueva antes de sustituir el catálogo. Renombrar un archivo local no requiere volver a seleccionarlo.
-- TV en vivo, Cine, Series y Guía EPG en una fila, con ilustraciones originales incluidas en la aplicación; no dependen de una web de imágenes.
-- Guía de TV con horarios alineados, bloques proporcionales, línea de ahora, navegación por ventanas de tres horas y detalle de programa.
-- Programa actual, avance, descripción y siguiente debajo del reproductor de TV. La guía se carga automáticamente al ver un canal y comparte caché con EPG.
-- Corrección M3U: categorías CINE o SERIES ya no reclasifican un canal cuya ruta indica TV en vivo. Se actualiza la clasificación de las cuentas anteriores sin eliminar entradas.
-- Desglose de catálogos para distinguir episodios M3U de series agrupadas Xtream. Los totales por sí solos no demuestran contenido ausente.
-- Editar → Usar catálogo completo de Xtream infiere los datos del enlace M3U, permite revisarlos y cambia a la API después de conectar. Se conservan la cuenta y las referencias a favoritos; se relacionan TV/cine identificables. Los episodios M3U no se convierten en favoritos de series completas por un ID numérico.
+- Menú de video/calidad, idioma de audio, subtítulos y SRT/VTT dentro del video, también en pantalla completa.
+- Motor local FFmpeg para AC3, EAC3 y DTS: decodifica la pista elegida y entrega AAC al reproductor. Se activa automáticamente en cine/episodios cuando el análisis detecta incompatibilidad; también hay botón manual.
+- Prefiere español cuando está disponible. Desactivado es una opción de silencio, no una pista de audio inicial.
+- Extrae subtítulos integrados de texto. Los subtítulos gráficos siguen requiriendo un reproductor externo.
+- Controles de reproducción, volumen y búsqueda dentro del video para el modo compatible.
 
-Pruebas: clasificación, comparación de conteos, credenciales inferidas y favoritos; edición y conversión con proveedor simulado; tarjetas en dos columnas y secciones en una fila; EPG temporal, detalle y programación del reproductor. Se mantienen las pruebas de HLS/MP4 dual, subtítulos, TS y multiscreen, y la validación de escritorio Windows. No se ha comparado el catálogo real del usuario ni se garantiza que toda exportación M3U contenga todos los datos de una API.
+Validación: señal sintética con dos pistas AC3, selección inglesa comprobada por frecuencia y audio no silencioso, subtítulo español integrado, cambio de pista desde la interfaz y menú en pantalla completa. Se mantienen las pruebas de cuentas, guía, HLS/MP4 dual, TS y multiscreen. No se ha probado la película del proveedor del usuario.
 
-Actualiza desde código extrayendo esta versión en una carpeta nueva y ejecutando `npm.cmd ci` seguido de `npm.cmd start` con Node.js 24 LTS. Las cuentas se conservan fuera del código. El portable sigue sin firma digital y puede ser bloqueado por Control Inteligente de Aplicaciones.
+Extrae el código en una carpeta nueva. Ejecuta `npm.cmd ci` y `npm.cmd start` con Node.js 24 LTS. Las cuentas se conservan fuera del código. El motor compatible requiere ejecutar los binarios FFmpeg y FFprobe incluidos; la política de Windows puede bloquear aplicaciones sin firma.
+
+Los binarios y avisos de terceros se describen en docs/THIRD_PARTY_MEDIA.md.

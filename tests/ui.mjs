@@ -42,63 +42,147 @@ try {
   }
   fixture = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    if (hlsDir && /^\/stream(?:\d+\.ts|\.m3u8)$/.test(req.url)) {
+    const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/player_api.php') {
+      res.setHeader('Content-Type', 'application/json');
+      const action = url.searchParams.get('action');
+      let result;
+      if (url.searchParams.get('username') !== 'demo +&' || url.searchParams.get('password') !== 'test/?!') result = { user_info: { auth: 0 } };
+      else if (!action) result = { user_info: { auth: 1, status: 'Active' } };
+      else if (action.endsWith('categories')) result = [{ category_id: 1, category_name: 'Selección neón' }];
+      else if (action === 'get_live_streams') result = [{ stream_id: 1, name: 'TV Xtream', category_id: 1 }];
+      else if (action === 'get_vod_streams') result = [{ stream_id: 2, name: 'Cine Xtream', category_id: 1, container_extension: 'webm' }];
+      else if (action === 'get_series') result = [{ series_id: 3, name: 'Serie Xtream', category_id: 1 }];
+      else if (action === 'get_series_info') result = { episodes: { 1: [{ id: 4, title: 'Episodio uno', episode_num: 1, container_extension: 'webm' }], 2: [{ id: 5, title: 'Episodio dos', episode_num: 1, container_extension: 'webm' }] } };
+      else result = [];
+      res.end(JSON.stringify(result));
+    }
+    else if (hlsDir && /^\/stream(?:\d+\.ts|\.m3u8)$/.test(req.url)) {
       res.setHeader('Content-Type', req.url.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t');
       res.end(await readFile(join(hlsDir, req.url.slice(1))));
     }
-    else if (req.url.startsWith('/video')) { res.setHeader('Content-Type', 'video/webm'); res.end(data); }
+    else if (req.url.startsWith('/video') || req.url.startsWith('/movie/') || req.url.startsWith('/series/')) { res.setHeader('Content-Type', 'video/webm'); res.end(data); }
     else { res.setHeader('Content-Type', 'text/plain'); res.end(playlist(fixture.address().port)); }
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const port = fixture.address().port;
-  await page.getByRole('button', { name: '＋ Añadir lista', exact: true }).click();
+  const addM3u = async (name, text) => {
+    await page.locator('#add-account').click();
+    await page.locator('[data-type="m3u"]').click();
+    await page.locator('#account-name').fill(name);
+    await page.locator('#playlist-file').setInputFiles({ name: 'Prueba.m3u', mimeType: 'text/plain', buffer: Buffer.from(text) });
+    await page.locator('#account-submit').click();
+    await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  };
+  const goto = kind => page.locator(`[data-view="${kind}"]`).click();
+  await page.locator('#add-account').click();
+  assert.equal(await page.locator('#account-fields').isVisible(), false);
+  await page.locator('[data-type="m3u"]').click();
   await page.locator('#playlist-file').setInputFiles({ name: 'invalid.m3u', mimeType: 'text/plain', buffer: Buffer.from('invalid') });
-  await page.locator('#import-submit').click();
-  await page.waitForFunction(() => document.querySelector('#import-error').textContent.includes('válida'));
-  await page.locator('#playlist-file').setInputFiles({ name: 'Prueba.m3u', mimeType: 'text/plain', buffer: Buffer.from(playlist(port)) });
-  await page.locator('#import-submit').click();
-  await page.waitForSelector('#import-dialog', { state: 'hidden' });
-  assert.equal(await page.locator('.channel-card').count(), 2);
+  await page.locator('#account-submit').click();
+  await page.waitForFunction(() => document.querySelector('#account-error').textContent.includes('válida'));
+  await page.locator('#cancel-account').click();
+  await addM3u('Mi cuenta M3U', playlist(port) + `\n#EXTINF:-1 group-title="Películas",Cine de prueba\nhttp://127.0.0.1:${port}/video.webm?movie=1\n#EXTINF:-1 group-title="Series",Serie M3U\nhttp://127.0.0.1:${port}/video.webm?series=1`);
+  assert.equal(await page.locator('#count-live').textContent(), '2');
+  assert.equal(await page.locator('#count-movie').textContent(), '1');
+  assert.equal(await page.locator('#count-series').textContent(), '1');
+  await goto('live');
+  assert.equal(await page.locator('.content-card').count(), 2);
   await page.getByRole('button', { name: 'Favorito: Noticias Uno', exact: true }).click();
-  await page.locator('#favorites-view').click();
-  assert.equal(await page.locator('.channel-card').count(), 1);
+  await page.waitForFunction(() => document.querySelector('#count-favorites').textContent === '1');
+  await goto('favorites');
+  assert.equal(await page.locator('.content-card').count(), 1);
   await page.reload();
-  await page.locator('#favorites-view').click();
-  assert.equal(await page.locator('.channel-card').count(), 1);
-  await page.locator('#all-view').click();
+  await goto('favorites');
+  assert.equal(await page.locator('.content-card').count(), 1);
+  await goto('live');
   await page.locator('#search').fill('musica');
-  assert.equal(await page.locator('.channel-card').count(), 1);
-  assert.equal(await page.locator('.channel-play strong').textContent(), 'Música Dos');
+  assert.equal(await page.locator('.content-card').count(), 1);
   await page.locator('#search').fill('ninguno');
-  assert.equal(await page.locator('#empty h3').textContent(), 'No encontramos canales');
+  assert.equal(await page.locator('#empty').isVisible(), true);
   await page.locator('#search').fill('');
   await page.locator('.category').filter({ hasText: 'Noticias' }).click();
-  assert.equal(await page.locator('.channel-card').count(), 1);
+  assert.equal(await page.locator('.content-card').count(), 1);
   await page.getByRole('button', { name: 'Reproducir Noticias Uno', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
   assert.match(await page.locator('#playback-status').textContent(), /Reproduciendo/);
-  await page.screenshot({ path: 'artifacts/reproductor.png', fullPage: true });
-  // Test remote import and preservation of existing favorites.
-  await page.locator('#add-list').click();
+  await goto('movie');
+  assert.equal(await page.locator('#watch-area').isVisible(), false);
+  assert.equal(await page.locator('.content-card').count(), 1);
+  await goto('series');
+  assert.equal(await page.locator('.content-card').count(), 1);
+  // A second account must not replace the first or share its favorites.
+  await page.locator('#add-account').click();
+  await page.locator('[data-type="m3u"]').click();
   await page.locator('#playlist-url').fill(`http://127.0.0.1:${port}/playlist.m3u`);
-  await page.locator('#playlist-name').fill('Mi lista por URL');
-  await page.locator('#import-submit').click();
-  await page.waitForSelector('#import-dialog', { state: 'hidden' });
-  assert.equal(await page.locator('#list-name').textContent(), 'Mi lista por URL');
-  assert.equal(await page.locator('#favorite-count').textContent(), '1');
-  assert.equal(await page.locator('.channel-card').count(), 2);
+  await page.locator('#account-name').fill('Cuenta por URL');
+  await page.locator('#account-submit').click();
+  await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  assert.equal(await page.locator('#account-select option').count(), 2);
+  assert.equal(await page.locator('#count-favorites').textContent(), '0');
+  const options = await page.locator('#account-select option').evaluateAll(elements => elements.map(el => el.value));
+  await page.locator('#account-select').selectOption(options[0]);
+  await page.waitForFunction(() => document.querySelector('#count-favorites').textContent === '1');
+  // A real HTTP Xtream fixture serves separate catalogs and on-demand episodes.
+  await page.locator('#add-account').click();
+  await page.locator('[data-type="xtream"]').click();
+  await page.locator('#server-url').fill(`http://127.0.0.1:${port}`);
+  await page.locator('#username').fill('demo +&');
+  await page.locator('#password').fill('bad');
+  await page.locator('#account-submit').click();
+  await page.waitForFunction(() => document.querySelector('#account-error').textContent.includes('rechazó'));
+  assert.equal(await page.locator('#account-select option').count(), 2);
+  await page.locator('#password').fill('test/?!');
+  await page.locator('#account-name').fill('Xtream de prueba');
+  await page.locator('#account-submit').click();
+  await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  assert.equal(await page.locator('#account-select option').count(), 3);
+  assert.equal(await page.locator('#count-live').textContent(), '1');
+  assert.equal(await page.locator('#count-movie').textContent(), '1');
+  assert.equal(await page.locator('#count-series').textContent(), '1');
+  await page.screenshot({ path: 'artifacts/cyberpunk-inicio.png', fullPage: true });
+  await goto('movie');
+  await page.getByRole('button', { name: 'Reproducir Cine Xtream', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
+  await goto('series');
+  await page.getByRole('button', { name: 'Ver episodios de Serie Xtream', exact: true }).click();
+  await page.waitForSelector('.episode');
+  assert.equal(await page.locator('#season-select option').count(), 2);
+  await page.locator('#season-select').selectOption('2');
+  assert.match(await page.locator('.episode').textContent(), /Episodio dos/);
+  await page.locator('.episode').click();
+  await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
+  assert.equal(await page.locator('#current-name').textContent(), 'Episodio dos');
+  await page.screenshot({ path: 'artifacts/cyberpunk-series.png', fullPage: true });
+  await page.reload();
+  assert.match(await page.locator('#home-account').textContent(), /Xtream de prueba/);
+  await page.getByRole('button', { name: 'Eliminar cuenta Xtream de prueba', exact: true }).click();
+  await page.locator('#confirm-delete').click();
+  await page.waitForSelector('#delete-dialog', { state: 'hidden' });
+  assert.equal(await page.locator('#account-select option').count(), 2);
+  // Existing users keep their previous M3U library and favorites.
+  const legacy = await browser.newPage();
+  await legacy.goto('http://127.0.0.1:5179');
+  await legacy.evaluate(port => {
+    localStorage.setItem('nexo.library.v1', JSON.stringify({ name: 'Cuenta anterior', channels: [{ id: `http://127.0.0.1:${port}/video.webm`, url: `http://127.0.0.1:${port}/video.webm`, name: 'Anterior', group: 'Noticias' }], favorites: [`http://127.0.0.1:${port}/video.webm`] }));
+  }, port);
+  await legacy.reload();
+  assert.match(await legacy.locator('#home-account').textContent(), /Cuenta anterior/);
+  assert.equal(await legacy.locator('#count-favorites').textContent(), '1');
+  await legacy.close();
   if (hlsDir) {
-    await page.locator('#add-list').click();
-    await page.locator('#playlist-file').setInputFiles({ name: 'HLS.m3u', mimeType: 'text/plain', buffer: Buffer.from(`#EXTM3U\n#EXTINF:-1,Canal HLS\nhttp://127.0.0.1:${port}/stream.m3u8`) });
-    await page.locator('#import-submit').click();
-    await page.waitForSelector('#import-dialog', { state: 'hidden' });
+    await addM3u('HLS de prueba', `#EXTM3U\n#EXTINF:-1,Canal HLS\nhttp://127.0.0.1:${port}/stream.m3u8`);
+    await goto('live');
     await page.getByRole('button', { name: 'Reproducir Canal HLS', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#video').currentTime > 0.5);
     assert.match(await page.locator('#playback-status').textContent(), /Reproduciendo/);
-    console.log('HLS: manifiesto y segmentos H.264 reproducidos con hls.js: OK');
+    console.log('HLS: manifiesto y segmentos H.264 reproducidos: OK');
   }
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await goto('home');
+  await page.screenshot({ path: 'artifacts/cyberpunk-1000px.png', fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('UI: importación inválida y válida, URL, categorías, búsqueda, favoritos, persistencia y reproducción real: OK');
+  console.log('UI: cuentas M3U/URL/Xtream, autenticación, TV/cine/series, temporadas, reproducción, favoritos, cambio/eliminación de cuenta, persistencia y migración: OK');
 } finally {
   await browser?.close();
   if (fixture) await new Promise(resolve => fixture.close(resolve));

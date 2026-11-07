@@ -1,59 +1,69 @@
-# Nexo IPTV
+# Nexo IPTV · Neon Edition
 
-Primera versión de un reproductor de escritorio para Windows 11 (x64), con interfaz propia en español inspirada en la navegación por biblioteca de los reproductores IPTV.
+Reproductor de escritorio para Windows 11 x64, con interfaz en español y diseño cyberpunk.
 
-## Funciones
+## Empezar
 
-- Importación M3U/M3U8 por archivo o enlace HTTP/HTTPS, hasta 20 MB.
-- Categorías, búsqueda sin distinción de acentos y favoritos.
-- Reproducción HLS (`.m3u8`) mediante hls.js y formatos que soporte Chromium, como MP4 H.264/AAC.
-- Controles de reproducción, volumen y pantalla completa.
-- Lista y favoritos guardados localmente entre sesiones. La importación sustituye la lista actual; conserva favoritos cuyas URL siguen presentes.
-- Renderizado por bloques de 120 canales para listas grandes.
+En la pantalla principal pulsa **Agregar cuenta** y elige:
 
-No incluye canales ni suscripciones. No implementa todavía Xtream Codes, EPG, catálogo de series/películas, DRM ni reproducción MPEG-TS directa, RTSP o UDP. Algunas fuentes requieren cabeceras o códecs que esta versión no admite. Las fuentes HLS deben permitir las solicitudes CORS de segmentos y manifiestos; no se desactiva la seguridad del navegador para evitarlas. Una URL HLS sin extensión `.m3u8` no se detecta automáticamente en esta versión.
+- **Xtream Codes**: introduce el servidor HTTP/HTTPS (con puerto si lo requiere), usuario y contraseña del proveedor. Se cargan TV, cine y series por separado. En series puedes elegir temporada y episodio.
+- **Lista M3U**: importa un archivo o introduce una URL. Cine y series se identifican por las categorías (`Cine`, `Películas`, `Movies`, `VOD`, `Series`, etc.) o rutas `/movie/` y `/series/`. Sin esos datos aparecen en TV en vivo; no se inventa un catálogo. Las series M3U se reproducen como entradas individuales.
+
+Puedes guardar varias cuentas, cambiar entre ellas, actualizar catálogos remotos y eliminar cuentas. Las listas de archivo se actualizan agregando el archivo nuevo. Los favoritos pertenecen a cada cuenta. La lista y favoritos de v0.1 se migran a una cuenta M3U al abrir la nueva versión; el almacenamiento anterior solo se elimina tras un guardado correcto.
+
+No incluye canales ni suscripciones, EPG, DRM, reproducción RTSP/UDP ni MPEG-TS directo. Compatible con HLS (`.m3u8`) y formatos que soporte Chromium. Algunos proveedores necesitan códecs, VPN o cabeceras que esta versión no admite. HLS requiere CORS en manifiestos y segmentos, también en Electron: la aplicación mantiene habilitada la seguridad del navegador. Una URL HLS sin extensión `.m3u8` no se identifica automáticamente.
 
 ## Ejecutar en Windows 11
 
-Instala Node.js 24 LTS y abre PowerShell dentro de esta carpeta:
+Instala Node.js 24 LTS. En PowerShell dentro del repositorio:
 
 ```powershell
 npm ci
 npm start
 ```
 
-Para crear una carpeta portable de Windows:
+Para generar una carpeta portable:
 
 ```powershell
 npm run package:win
 ```
 
-Abre `release/Nexo-IPTV-win32-x64/Nexo-IPTV.exe`. Conserva toda la carpeta junto al ejecutable; no funciona copiando solo el `.exe`. Este paquete no lleva firma digital ni instalador. La verificación final de reproducción y del ejecutable debe hacerse en Windows 11 con una lista de prueba autorizada.
+Abre `release/Nexo-IPTV-win32-x64/Nexo-IPTV.exe`. Conserva toda la carpeta junto al ejecutable. El paquete no tiene firma digital ni instalador.
 
-## Desarrollo y pruebas
+Las versiones descargables se generan con GitHub Actions al publicar una etiqueta `v*`. El workflow también se puede ejecutar manualmente indicando una etiqueta existente. Cada versión se construye desde su propia etiqueta y publica ZIP y SHA-256 en su Release.
 
-Usa el checkout existente; no necesitas crear un worktree. No se requieren servicios, credenciales ni variables de entorno para desarrollar.
+## Desarrollo y validación
+
+Usa el checkout existente; no necesitas crear un worktree. El desarrollo no requiere credenciales ni servicios de terceros. Las pruebas usan un servidor local que simula Xtream sin credenciales reales.
 
 ```sh
 npm ci
-npm run dev     # interfaz en navegador; las listas remotas necesitan CORS
-npm test        # parser y filtros
-npm run build   # frontend para Electron
-npm run test:ui # Chromium instalado, o CHROMIUM_PATH apuntando a su ejecutable
-npm run test:hls # añade reproducción HLS H.264; requiere FFmpeg con libx264
-npm start      # escritorio; Linux necesita sesión gráfica y bibliotecas de Electron
+npm run dev      # interfaz en navegador; solicitudes al proveedor necesitan CORS
+npm test         # parser, clasificación, migración, autenticación y episodios
+npm run test:ui  # flujos funcionales y reproducción WebM; requiere Chromium
+npm run test:hls # añade HLS H.264 real; requiere FFmpeg con libx264
+npm run test:desktop # en Windows: interfaz de producción, IPC y cifrado nativo
+npm run build    # interfaz de producción para Electron
+npm start       # escritorio; Linux necesita sesión gráfica y un almacén seguro
 ```
 
-`test:ui` levanta y detiene su propio servidor de Vite y valida importación, búsqueda, categorías, favoritos, persistencia, errores y reproducción de un vídeo WebM generado localmente. Para usar el Chromium de Playwright: `npx playwright install chromium` y `CHROMIUM_PATH=playwright npm run test:ui`. En Linux, el empaquetado de Windows necesita acceso a las descargas oficiales de Electron.
+Las pruebas de UI usan `/usr/bin/chromium`; puedes definir `CHROMIUM_PATH` con otro ejecutable. Para Chromium de Playwright: `npx playwright install chromium`, después `CHROMIUM_PATH=playwright npm run test:ui`. Se guardan capturas en `artifacts/` (ignorado por Git).
 
-## Datos locales
+Las pruebas cubren M3U por archivo y URL, errores de autenticación, varios catálogos, episodios y temporadas, cambio/eliminación de cuentas, favoritos, búsqueda, categorías, persistencia, migración y reproducción. Se valida contra un proveedor simulado; la compatibilidad con un proveedor real y la reproducción del ejecutable deben comprobarse en Windows 11.
 
-Las listas y favoritos se guardan en `localStorage` en el perfil de Electron (`%APPDATA%/nexo-iptv` en Windows). Los enlaces de proveedores pueden contener credenciales: se almacenan en ese perfil sin cifrado. No compartas el perfil ni subas listas privadas al repositorio. No hay telemetría ni servidor propio. Los logos y vídeos se solicitan directamente al proveedor. El almacenamiento local tiene una cuota: si una lista no cabe, se mantiene la anterior y se muestra un error.
+## Datos y credenciales
 
-## Estructura
+En Electron las cuentas, catálogos y favoritos se escriben en `accounts.enc` en el perfil de usuario (`%APPDATA%/nexo-iptv`, según el nombre de la aplicación). Se cifran con Electron `safeStorage`, que utiliza DPAPI de Windows. La aplicación no guarda si no hay cifrado seguro disponible. El archivo pertenece al usuario de Windows y no debe copiarse a otro equipo como método de exportación.
 
-- `electron/`: ventana aislada y puente limitado para descargar listas sin el CORS del navegador.
-- `src/playlist.js`: lectura y filtrado de listas.
-- `src/main.js`: biblioteca, persistencia y reproducción.
-- `src/style.css`: interfaz adaptable.
+**En modo navegador** se usa `localStorage` sin cifrado; el formulario lo advierte antes de conectar. No uses ese modo para cuentas sensibles en un equipo compartido. Los enlaces M3U pueden contener contraseñas. No hay telemetría ni servidor propio. Catálogos, logos y vídeo se solicitan al proveedor.
+
+Cada respuesta se limita a 20 MB y el estado de escritorio a 40 MB. Si el guardado falla se conservan los datos anteriores. Las actualizaciones con errores parciales conservan los catálogos anteriores de las secciones afectadas.
+
+## Código
+
+- `electron/`: ventana aislada, descarga HTTP y almacenamiento cifrado.
+- `src/xtream.js`: API de cuentas, catálogos y episodios.
+- `src/library.js`, `src/playlist.js`: clasificación, migración y M3U.
+- `src/storage.js`, `src/network.js`: persistencia y solicitudes con límites.
+- `src/main.js`, `src/style.css`: interfaz y reproducción.
 - `tests/`: pruebas unitarias y funcionales.

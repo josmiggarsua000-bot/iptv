@@ -1,7 +1,26 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs/promises');
 
 app.whenReady().then(() => {
+  const stateFile = path.join(app.getPath('userData'), 'accounts.enc');
+  const checkSender = event => { if (event.senderFrame !== event.sender.mainFrame) throw new Error('Origen no permitido.'); };
+  ipcMain.handle('state:read', async event => {
+    checkSender(event);
+    let bytes;
+    try { bytes = await fs.readFile(stateFile); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('El cifrado del sistema no está disponible.');
+    return JSON.parse(safeStorage.decryptString(bytes));
+  });
+  ipcMain.handle('state:save', async (event, state) => {
+    checkSender(event);
+    if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) throw new Error('No hay un almacén de claves seguro disponible.');
+    const json = JSON.stringify(state);
+    if (Buffer.byteLength(json) > 40 * 1024 * 1024) throw new Error('Las cuentas superan el límite de almacenamiento de 40 MB.');
+    await fs.mkdir(path.dirname(stateFile), { recursive: true });
+    await fs.writeFile(stateFile + '.tmp', safeStorage.encryptString(json));
+    await fs.rename(stateFile + '.tmp', stateFile);
+  });
   ipcMain.handle('playlist:fetch', async (event, address) => {
     if (event.senderFrame !== event.sender.mainFrame) throw new Error('Origen no permitido.');
     const url = new URL(address);
@@ -24,7 +43,7 @@ app.whenReady().then(() => {
   const createWindow = () => {
     const window = new BrowserWindow({
       width: 1440, height: 940, minWidth: 1000, minHeight: 700,
-      backgroundColor: '#0b1018', title: 'Nexo IPTV', autoHideMenuBar: true,
+      backgroundColor: '#090713', title: 'Nexo IPTV', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true }
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

@@ -59,7 +59,7 @@ try {
       epgQueries.push(url.searchParams.get('username'));
       const time = ms => new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0,14) + ' +0000';
       res.setHeader('Content-Type', 'application/xml');
-      res.end(`<?xml version="1.0"?><!DOCTYPE tv SYSTEM "xmltv.dtd"><tv><channel id="news"><display-name>Noticias Uno</display-name></channel><programme channel="news" start="${time(Date.now()-600000)}" stop="${time(Date.now()+1800000)}"><title>Programa de prueba</title><desc>Actualidad</desc></programme></tv>`);
+      res.end(`<?xml version="1.0"?><!DOCTYPE tv SYSTEM "xmltv.dtd"><tv><channel id="news"><display-name>Noticias Uno</display-name></channel><programme channel="news" start="${time(Date.now()-600000)}" stop="${time(Date.now()+1800000)}"><title>Programa de prueba</title><desc>Actualidad</desc></programme><programme channel="news" start="${time(Date.now()+1800000)}" stop="${time(Date.now()+5400000)}"><title>Siguiente programa</title></programme></tv>`);
     }
     else if (url.pathname === '/xmltv.dtd') { dtdRequests++; res.end(''); }
     else if (hlsDir && /^\/dual[-\w]*\.(mp4|m3u8|ts|vtt)$/.test(url.pathname)) {
@@ -115,6 +115,8 @@ try {
   assert.equal(await page.locator('#count-live').textContent(), '2');
   assert.equal(await page.locator('.sidebar').isVisible(), false);
   assert.equal(await page.locator('.account-portals [data-open]').count(), 4);
+  const tilePositions = await page.locator('.account-portals [data-open]').evaluateAll(tiles => tiles.map(t => t.getBoundingClientRect().top));
+  assert.ok(tilePositions.every(top => top === tilePositions[0]));
   assert.equal(await page.locator('#count-movie').textContent(), '1');
   assert.equal(await page.locator('#count-series').textContent(), '1');
   await goto('live');
@@ -152,10 +154,22 @@ try {
   await page.locator('#epg-url').fill(`http://127.0.0.1:${port}/epg.xml`);
   await page.locator('#epg-save').click();
   await page.waitForSelector('#epg-dialog', { state: 'hidden' });
+  await page.waitForFunction(() => document.querySelector('#channel-epg').textContent.includes('Programa de prueba'));
+  assert.match(await page.locator('#channel-epg').textContent(), /Siguiente programa/);
+  await page.screenshot({ path: 'artifacts/canal-epg.png', fullPage: true });
   await goto('epg');
   await page.waitForSelector('.epg-program');
   assert.match(await page.locator('#epg-programs').textContent(), /Programa de prueba/);
   assert.equal(dtdRequests, 0);
+  assert.equal(await page.locator('.epg-hours > span:not(.epg-axis-now)').count(), 6);
+  await page.locator('.epg-program').first().click();
+  await page.waitForSelector('#programme-dialog', { state: 'visible' });
+  assert.equal(await page.locator('#programme-title').textContent(), 'Programa de prueba');
+  await page.locator('#programme-close').click();
+  const originalWindow = await page.locator('#epg-window-label').textContent();
+  await page.locator('#epg-next').click();
+  assert.notEqual(await page.locator('#epg-window-label').textContent(), originalWindow);
+  await page.locator('#epg-now').click();
   await page.locator('.category').filter({ hasText: 'Música' }).click();
   assert.doesNotMatch(await page.locator('#epg-programs').textContent(), /Noticias Uno/);
   await page.locator('.category').filter({ hasText: 'Todas las categorías' }).click();
@@ -230,6 +244,25 @@ try {
 
 
   await page.locator('#change-account').click();
+  const rows = await page.locator('.account-row').evaluateAll(rows => rows.slice(0,2).map(r => ({ x:r.getBoundingClientRect().x, y:r.getBoundingClientRect().y })));
+  assert.equal(rows[0].y, rows[1].y); assert.notEqual(rows[0].x, rows[1].x);
+  await page.getByRole('button', { name: 'Editar cuenta Mi cuenta M3U', exact: true }).click();
+  await page.locator('#account-name').fill('Mi cuenta temporal');
+  await page.locator('#account-submit').click();
+  await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  assert.equal(await page.locator('.account-row').count(), 2);
+  await page.getByRole('button', { name: 'Editar cuenta Mi cuenta temporal', exact: true }).click();
+  await page.locator('#account-name').fill('Mi cuenta M3U');
+  await page.locator('#account-submit').click();
+  await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  await page.getByRole('button', { name: 'Editar cuenta Cuenta por URL', exact: true }).click();
+  await page.locator('#use-xtream').click();
+  await page.locator('#account-name').fill('No debe guardarse');
+  await page.locator('#account-submit').click();
+  await page.waitForFunction(() => document.querySelector('#account-error').textContent.includes('rechazó'));
+  assert.doesNotMatch(await page.locator('#accounts-list').textContent(), /No debe guardarse/);
+  await page.locator('#cancel-account').click();
+  await page.screenshot({ path: 'artifacts/cuentas-dos-columnas.png', fullPage: true });
   await page.getByRole('button', { name: 'Entrar a Mi cuenta M3U', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#count-favorites').textContent === '1');
   // A real HTTP Xtream fixture serves separate catalogs and on-demand episodes.
@@ -290,6 +323,24 @@ try {
   assert.match(await legacy.locator('#home-account').textContent(), /Cuenta anterior/);
   assert.equal(await legacy.locator('#count-favorites').textContent(), '1');
   await legacy.close();
+  await page.locator('#picker-add').click();
+  await page.locator('[data-type="m3u-url"]').click();
+  await page.locator('#playlist-url').fill(`http://127.0.0.1:${port}/get.php?username=demo%20%2B%26&password=test%2F%3F%21&type=m3u_plus&output=ts`);
+  await page.locator('#account-name').fill('Conversión de catálogo');
+  await page.locator('#account-submit').click();
+  await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  await page.locator('#change-account').click();
+  await page.getByRole('button', { name: 'Editar cuenta Conversión de catálogo', exact: true }).click();
+  await page.locator('#use-xtream').click();
+  assert.equal(await page.locator('#username').inputValue(), 'demo +&');
+  await page.locator('#account-submit').click();
+  await page.waitForSelector('#account-dialog', { state: 'hidden' });
+  assert.equal(await page.locator('.account-row').count(), 3);
+  await page.getByRole('button', { name: 'Entrar a Conversión de catálogo', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent === 'Catálogo actualizado.');
+  assert.equal(await page.locator('#count-live').textContent(), '1');
+  assert.equal(await page.locator('#count-movie').textContent(), '1');
+  assert.equal(await page.locator('#count-series').textContent(), '1');
   if (hlsDir) {
     await addM3u('HLS de prueba', `#EXTM3U\n#EXTINF:-1,Canal HLS\nhttp://127.0.0.1:${port}/stream.m3u8`);
     await goto('live');

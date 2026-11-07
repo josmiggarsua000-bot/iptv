@@ -90,3 +90,12 @@ export function resolveEpgUrl(account) {
   const mode = epgMode(account);
   return mode === 'off' ? '' : mode === 'manual' ? httpUrl(account.config.epgUrl) || '' : discoverEpgUrl(account);
 }
+export function windowPrograms(epg, channel, start, end) {
+  if (!epg) return [];
+  const id = epg.programs.has(channel.epgId) ? channel.epgId : epg.names.get(normalizeName(channel.name));
+  return (epg.programs.get(id) || []).filter(p => p.start < end && p.stop > start && p.stop > p.start);
+}
+export function currentPrograms(epg, channel, now = Date.now()) {
+  const list = windowPrograms(epg, channel, now, now + 48 * 3600000);
+  return { current: list.find(p => p.start <= now && p.stop > now) || null, next: list.find(p => p.start > now) || null };
+}

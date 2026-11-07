@@ -43,13 +43,15 @@ app.once('browser-window-created', (_, window) => {
       await new Promise(resolve => { window.webContents.once('did-finish-load', resolve); window.webContents.reload(); });
       const wait = expression => window.webContents.executeJavaScript(`new Promise((resolve, reject) => { let n=0; const timer=setInterval(() => { if (${expression}) { clearInterval(timer); resolve(); } else if (++n>100) { clearInterval(timer); reject(new Error('Multimedia check timed out')); } },100); })`);
       await wait("document.querySelector('.account-enter')");
+      await window.webContents.executeJavaScript("document.querySelector('button[aria-label=\"Editar cuenta Prueba multimedia\"]').click(); document.querySelector('#account-name').value='Prueba multimedia editada'; document.querySelector('#account-submit').click()", true);
+      await wait("document.querySelector('.account-info strong')?.textContent === 'Prueba multimedia editada'");
       await window.webContents.executeJavaScript("document.querySelector('.account-enter').click()", true);
       await wait("!document.querySelector('.app').hidden");
       await window.webContents.executeJavaScript("document.querySelector('[data-open=movie]').click(); document.querySelector('#video').muted = true; document.querySelector('.content-play').click()", true);
       await wait("document.querySelector('#video').currentTime > 0.2 && document.querySelector('#audio-track').options.length === 2");
       await window.webContents.executeJavaScript("const select=document.querySelector('#audio-track'); select.value='1'; select.dispatchEvent(new Event('change'))");
       await wait("document.querySelector('#video').audioTracks[1].enabled");
-      console.log('Desktop Windows: interfaz, IPC, cifrado, descarga HTTP, reproducción MP4 y selección de audio dual: OK');
+      console.log('Desktop Windows: interfaz, IPC, cifrado, descarga HTTP, reproducción MP4 y edición de cuenta y selección de audio dual: OK');
       clearTimeout(deadline);
       fixture.close();
       for (const win of BrowserWindow.getAllWindows()) win.destroy();

@@ -4,7 +4,7 @@ Reproductor de escritorio para Windows 11 x64, con interfaz en español y diseñ
 
 ## Empezar
 
-Al abrir el programa aparece el selector de cuentas. Si todavía no hay ninguna, solo se muestra **Agregar cuenta**. Las cuentas guardadas se conservan al cerrar; en cada inicio debes seleccionar **Entrar** en la cuenta que quieras usar. Dentro de la cuenta aparecen cuatro cuadros centrales: **TV en vivo**, **Cine**, **Series** y **Guía EPG**. La barra lateral y sus categorías se muestran al elegir una sección. Desde **Inicio** puedes volver a los cuatro cuadros. **Cambiar cuenta** vuelve al selector y detiene la reproducción.
+Al abrir el programa aparece el selector de cuentas. Si todavía no hay ninguna, solo se muestra **Agregar cuenta**. Las cuentas guardadas se conservan al cerrar; en cada inicio debes seleccionar **Entrar** en la cuenta que quieras usar. Dentro de la cuenta aparecen cuatro tarjetas en una sola fila, con fondos ilustrados locales: **TV en vivo**, **Cine**, **Series** y **Guía EPG**. La barra lateral y sus categorías se muestran al elegir una sección. Desde **Inicio** puedes volver a los cuatro cuadros. **Cambiar cuenta** vuelve al selector y detiene la reproducción.
 
 Pulsa **Agregar cuenta** y elige:
 
@@ -14,15 +14,27 @@ Pulsa **Agregar cuenta** y elige:
 
 En las listas M3U, cine y series se identifican por las categorías (`Cine`, `Películas`, `Movies`, `VOD`, `Series`, etc.) o rutas `/movie/` y `/series/`. Sin esos datos aparecen en TV en vivo; no se inventa un catálogo. Las series M3U se reproducen como entradas individuales.
 
+El selector muestra las cuentas en tarjetas de dos columnas, con icono de usuario y botones Entrar, Editar y Actualizar. **Editar** permite renombrar o cambiar la fuente y credenciales sin crear otra cuenta. Renombrar un archivo local no exige importarlo de nuevo; cambiar conexión exige validarla y el fallo conserva los datos anteriores.
+
 Puedes guardar varias cuentas, cambiar entre ellas, actualizar catálogos remotos y eliminar cuentas. Las listas de archivo se actualizan agregando el archivo nuevo. Los favoritos pertenecen a cada cuenta. La lista y favoritos de v0.1 se migran a una cuenta M3U al abrir la nueva versión; el almacenamiento anterior solo se elimina tras un guardado correcto.
 
 No incluye canales ni suscripciones, DRM ni reproducción RTSP/UDP. Compatible con HLS (`.m3u8`), MPEG-TS H.264/AAC mediante mpegts.js y formatos que soporte Chromium. Algunos proveedores necesitan códecs, VPN o cabeceras que esta versión no admite. HLS y MPEG-TS requieren CORS en manifiestos, segmentos y señal, también en Electron: la aplicación mantiene habilitada la seguridad del navegador. Una URL HLS sin extensión `.m3u8` no se identifica automáticamente.
+
+## M3U frente a Xtream
+
+Los totales no son directamente equivalentes: M3U suele incluir cada episodio como una entrada independiente, mientras Xtream agrupa las series y pide sus episodios al abrirlas. El selector ahora muestra un desglose por canales, películas y entradas de series/series agrupadas.
+
+Se corrigió la clasificación de categorías como CINE PREMIUM o SERIES 24/7: una ruta de canal `/live/` (o una ruta Xtream de TV sin prefijo) tiene prioridad sobre el nombre de la categoría. Las rutas `/movie/` y `/series/` también son autoritativas. Las listas anteriores se reclasifican al abrirlas sin eliminar entradas.
+
+Si una cuenta M3U ofrece menos contenido, su exportación puede ser parcial o estar filtrada por el proveedor; la aplicación no puede inventar lo que no está en el archivo. **Editar → Usar catálogo completo de Xtream** obtiene servidor y credenciales del enlace/streams, permite revisarlos y carga la API al guardar. Conserva el ID de cuenta. Los favoritos de TV/cine se relacionan por servidor, tipo e ID de stream; las referencias anteriores se conservan. No se asocian episodios M3U con series completas por coincidencia de números. La conversión solo se guarda después de conectar; no garantiza que el proveedor permita su API o devuelva un catálogo completo.
 
 ## EPG, actualización y vencimiento
 
 Al abrir **Guía EPG**, la aplicación intenta detectar su dirección usando la cuenta Xtream o los parámetros `username` y `password` del enlace M3U para construir `xmltv.php` en el mismo servidor y puerto. También reconoce `url-tvg`/`x-tvg-url` de una lista y rutas de stream Xtream en archivos locales. No se escanean servidores ni se necesita volver a escribir las credenciales. Una dirección inferida no garantiza que el proveedor tenga EPG disponible.
 
 En **Configurar EPG** puedes elegir **Detectar automáticamente**, **Enlace manual** o **Desactivada**. Los enlaces manuales guardados en versiones anteriores siguen teniendo prioridad. Se aceptan XMLTV/XMLTV.GZ con una declaración externa estándar `<!DOCTYPE tv SYSTEM "xmltv.dtd">`: se elimina la declaración antes de analizar el XML, sin descargar DTD ni resolver entidades externas. Las declaraciones internas de entidades no son compatibles.
+
+La guía se presenta como una cuadrícula con canales fijos a la izquierda, horarios alineados, bloques proporcionales a su duración y una línea de ahora. Muestra ventanas de tres horas con navegación Anterior/Ahora/Siguiente; pulsar un programa abre su detalle y permite ver el canal en vivo. Debajo del reproductor de TV aparece la EPG del canal con programa actual, progreso, descripción y siguiente. Se descarga automáticamente al reproducir TV si hay una fuente EPG y se comparte la descarga/caché con la guía.
 
 La guía se asocia por `tvg-id`/`epg_channel_id`, o nombre como alternativa, y se filtra con las categorías de TV a la izquierda. Presenta programación actual/próxima en horario local, hasta 48 horas, y conserva una ventana de 6 horas anteriores. Se pagina por 120 canales y se conserva en memoria durante 30 minutos. La EPG sigue siendo opcional.
 

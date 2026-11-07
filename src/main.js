@@ -3,6 +3,7 @@ import { setupEpg } from './epg-ui.js';
 import { resolveEpgUrl, epgMode } from './epg.js';
 import { setupMultiscreen } from './multiscreen.js';
 import { parseM3U, playlistEpgUrl, filterChannels, httpUrl } from './playlist.js';
+import { xtreamConfigFromM3U, mappedFavorites, catalogCounts } from './catalog.js';
 import { classifyM3U, sections } from './library.js';
 import { loadXtream, loadEpisodes, normalizeServer } from './xtream.js';
 import { requestText, requestJson, friendlyError } from './network.js';
@@ -13,10 +14,10 @@ const $ = selector => document.querySelector(selector);
 let state = { accounts: [], activeId: null, favorites: {} };
 let sessionAccountId = null;
 let view = 'home', group = '', limit = 120, accountType = null, busy = false, storageFailed = false;
-let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null;
+let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null, editingId = null;
 const video = $('#video'), dialog = $('#account-dialog');
 const account = () => state.accounts.find(a => a.id === sessionAccountId);
-const epg = setupEpg({ getAccount: account, updateConfig, getCategory: () => group, play: item => { setView('live'); playItem(item); } });
+const epg = setupEpg({ getAccount: account, updateConfig, getCategory: () => group, getPlaying: () => current?.kind === 'live' ? current : null, play: item => { setView('live'); playItem(item); } });
 const multiscreen = setupMultiscreen(account);
 const favorites = () => new Set(state.favorites[sessionAccountId] || []);
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text != null) el.textContent = text; return el; }
@@ -31,15 +32,36 @@ function setView(next) {
   if (view !== next) { stopPlayback(); multiscreen.stopAll(); }
   view = next; resetFilters(); render(); if (view === 'epg') epg.load(); window.scrollTo({ top: 0, behavior: 'instant' });
 }
-function openAccount() {
+function openAccount(existing = null) {
+  if (busy) return;
   if (storageFailed) { notify('No se pudieron abrir tus cuentas guardadas. Reinicia la aplicación para evitar sobrescribirlas.'); return; }
-  $('#account-form').reset(); accountType = null;
+  $('#account-form').reset(); accountType = null; editingId = existing?.id || null;
+  $('#account-dialog-title').textContent = editingId ? 'Editar cuenta' : 'Agregar cuenta';
+  $('#account-submit').textContent = editingId ? 'Guardar cambios →' : 'Conectar cuenta →';
+  $('#use-xtream').hidden = !editingId || !xtreamConfigFromM3U(existing);
+  $('#edit-note').hidden = !editingId;
+  $('#edit-note').textContent = existing?.type === 'm3u' ? 'M3U puede contar cada episodio por separado. Si el enlace incluye credenciales, Usar catálogo completo de Xtream permite cargar películas y series agrupadas. Guarda para confirmar el cambio de fuente; se conserva la cuenta anterior si la conexión falla. Los favoritos de TV/cine se relacionan cuando se identifican; un episodio M3U no equivale a una serie Xtream.' : 'Puedes cambiar el nombre o los datos de conexión. Los cambios de servidor o credenciales se validan antes de guardar.';
   $('#account-fields').hidden = true; $('#account-submit').disabled = true; $('#account-error').textContent = '';
   $('#file-name').textContent = 'Ningún archivo seleccionado';
   document.querySelectorAll('[data-type]').forEach(b => b.setAttribute('aria-pressed', 'false'));
   dialog.showModal();
+  if (existing) {
+    const type = existing.type === 'xtream' ? 'xtream' : existing.config.url ? 'm3u-url' : 'm3u-file';
+    document.querySelector(`[data-type="${type}"]`).click();
+    $('#account-name').value = existing.name;
+    $('#server-url').value = existing.config.server || '';
+    $('#username').value = existing.config.username || '';
+    $('#password').value = existing.config.password || '';
+    $('#playlist-url').value = existing.config.url || '';
+  }
 }
-for (const id of ['picker-add', 'empty-add']) $(`#${id}`).onclick = openAccount;
+$('#use-xtream').onclick = () => {
+  const original = state.accounts.find(a => a.id === editingId), config = xtreamConfigFromM3U(original);
+  if (!config) return;
+  document.querySelector('[data-type="xtream"]').click();
+  $('#server-url').value = config.server; $('#username').value = config.username; $('#password').value = config.password;
+};
+for (const id of ['picker-add', 'empty-add']) $(`#${id}`).onclick = () => openAccount();
 for (const id of ['close-dialog', 'cancel-account']) $(`#${id}`).onclick = () => { if (!busy) dialog.close(); };
 dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
 for (const button of document.querySelectorAll('[data-type]')) button.onclick = () => {
@@ -62,29 +84,40 @@ $('#account-form').onsubmit = async event => {
   event.preventDefault(); if (busy || !accountType) return;
   busy = true; $('#account-submit').disabled = true; $('#account-submit').textContent = 'Conectando…'; $('#account-error').textContent = '';
   try {
+    const previous = state.accounts.find(a => a.id === editingId);
     const type = accountType === 'xtream' ? 'xtream' : 'm3u';
-    let items, config, accountInfo = null, warnings = [];
+    let items, config = { ...(previous?.config || {}) }, accountInfo = previous?.accountInfo || null, warnings = [], changed = !previous || previous.type !== type;
     if (type === 'xtream') {
-      config = { server: normalizeServer($('#server-url').value), username: $('#username').value.trim(), password: $('#password').value };
+      Object.assign(config, { server: normalizeServer($('#server-url').value), username: $('#username').value.trim(), password: $('#password').value });
       if (!config.username || !config.password) throw new Error('Completa el usuario y la contraseña.');
-      ({ items, warnings, accountInfo } = await loadXtream(config, requestJson));
+      changed ||= ['server', 'username', 'password'].some(key => config[key] !== previous?.config[key]);
+      if (changed) ({ items, warnings, accountInfo } = await loadXtream(config, requestJson));
+      else items = previous.items;
     } else {
       const file = accountType === 'm3u-file' ? $('#playlist-file').files[0] : null, url = accountType === 'm3u-url' ? $('#playlist-url').value.trim() : '';
-      if (!file && !url) throw new Error('Selecciona un archivo o introduce el enlace M3U.');
-      if (url && !httpUrl(url)) throw new Error('Usa un enlace HTTP o HTTPS válido.');
-      if (file?.size > 64 * 1024 * 1024) throw new Error('El archivo supera el límite de 64 MB.');
-      const source = file ? { text: await file.text() } : await requestText(url);
-      items = classifyM3U(parseM3U(source.text, source.url));
-      config = { url: url || '', detectedEpgUrl: playlistEpgUrl(source.text, source.url) };
+      changed ||= !!file || url !== (previous?.config.url || '');
+      if (!changed && previous) items = classifyM3U(previous.items);
+      else {
+        if (!file && !url) throw new Error('Selecciona un archivo o introduce el enlace M3U.');
+        if (url && !httpUrl(url)) throw new Error('Usa un enlace HTTP o HTTPS válido.');
+        if (file?.size > 64 * 1024 * 1024) throw new Error('El archivo supera el límite de 64 MB.');
+        const source = file ? { text: await file.text() } : await requestText(url);
+        items = classifyM3U(parseM3U(source.text, source.url));
+        config.detectedEpgUrl = playlistEpgUrl(source.text, source.url); accountInfo = null;
+      }
+      config.url = url;
     }
-    const added = { id: crypto.randomUUID(), name: $('#account-name').value.trim() || (type === 'xtream' ? 'Mi cuenta Xtream' : $('#playlist-file').files[0]?.name || 'Mi lista M3U'), type, config, accountInfo, items, updatedAt: Date.now() };
-    await commit({ ...state, accounts: [...state.accounts, added], activeId: added.id });
-    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = added.id; view = 'home'; resetFilters(); dialog.close();
+    const added = { ...(previous || {}), id: previous?.id || crypto.randomUUID(), name: $('#account-name').value.trim() || previous?.name || (type === 'xtream' ? 'Mi cuenta Xtream' : $('#playlist-file').files[0]?.name || 'Mi lista M3U'), type, config, accountInfo, items, updatedAt: changed ? Date.now() : previous.updatedAt };
+    const nextAccounts = previous ? state.accounts.map(a => a.id === previous.id ? added : a) : [...state.accounts, added];
+    const nextFavorites = { ...state.favorites };
+    if (previous) nextFavorites[added.id] = mappedFavorites(previous.items, items, state.favorites[added.id] || []);
+    await commit({ ...state, accounts: nextAccounts, favorites: nextFavorites, activeId: added.id });
+    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = previous ? null : added.id; view = 'home'; resetFilters(); dialog.close();
     $('#account-form').reset();
-    notify(warnings.length ? `Cuenta conectada. No se pudo cargar: ${warnings.map(k => sections[k]).join(', ')}. Puedes actualizarla más tarde.` : 'Cuenta conectada.');
+    notify(warnings.length ? `Cuenta guardada. No se pudo cargar: ${warnings.map(k => sections[k]).join(', ')}. Puedes actualizarla más tarde.` : previous ? 'Cuenta actualizada.' : 'Cuenta conectada.');
     render();
   } catch (error) { $('#account-error').textContent = friendlyError(error); }
-  finally { busy = false; $('#account-submit').disabled = false; $('#account-submit').textContent = 'Conectar cuenta →'; render(); }
+  finally { busy = false; $('#account-submit').disabled = false; $('#account-submit').textContent = editingId ? 'Guardar cambios →' : 'Conectar cuenta →'; render(); }
 };
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => setView(button.dataset.view);
 for (const button of document.querySelectorAll('[data-open]')) button.onclick = () => { if (!account()) openAccount(); else setView(button.dataset.open); };
@@ -132,10 +165,12 @@ function render() {
   for (const kind of Object.keys(sections)) {
     const count = (active?.items || []).filter(i => i.kind === kind).length;
     $(`#count-${kind}`).textContent = count;
-    $(`#portal-${kind}`).textContent = `${count} ${kind === 'live' ? (count === 1 ? 'canal' : 'canales') : kind === 'movie' ? (count === 1 ? 'película' : 'películas') : (count === 1 ? 'serie' : 'series')}`;
+    $(`#portal-${kind}`).textContent = `${count} ${kind === 'live' ? (count === 1 ? 'canal' : 'canales') : kind === 'movie' ? (count === 1 ? 'película' : 'películas') : (active?.type === 'm3u' ? 'entradas de series' : count === 1 ? 'serie' : 'series')}`;
   }
   const favoriteIds = favorites();
   $('#count-favorites').textContent = (active?.items || []).filter(i => favoriteIds.has(i.id)).length;
+  $('#catalog-note').hidden = active?.type !== 'm3u';
+  $('#catalog-note').textContent = 'En M3U se cuentan entradas y episodios por separado; no equivale al número de series agrupadas de Xtream. Si faltan categorías, puedes cargar el catálogo Xtream desde Editar cuenta cuando la lista incluya credenciales.';
   $('#home-account').textContent = active ? `${active.name} / ${active.type === 'xtream' ? 'XTREAM CODES' : 'M3U'}` : 'Agrega una cuenta para empezar';
   renderAccounts();
   $('#categories').replaceChildren();
@@ -157,11 +192,14 @@ function renderAccounts() {
   if (!state.accounts.length) return;
   for (const a of state.accounts) {
     const row = node('div', 'account-row');
-    const info = node('div', 'account-info'); info.append(node('strong', '', a.name), node('small', '', `${a.type === 'xtream' ? 'XTREAM CODES' : 'M3U'} · ${a.items.length} títulos`));
+    const counts = catalogCounts(a.items);
+    const avatar = node('span', 'account-avatar', ''); avatar.setAttribute('aria-hidden', 'true');
+    const info = node('div', 'account-info'); info.append(node('strong', '', a.name), node('small', '', `${a.type === 'xtream' ? 'XTREAM CODES' : 'M3U'} · ${a.items.length} ${a.type === 'm3u' ? 'entradas' : 'elementos'}`), node('small', 'account-counts', `${counts.live} ${counts.live === 1 ? 'canal' : 'canales'} · ${counts.movie} ${counts.movie === 1 ? 'película' : 'películas'} · ${counts.series} ${a.type === 'm3u' ? (counts.series === 1 ? 'entrada de serie' : 'entradas de series') : (counts.series === 1 ? 'serie' : 'series')}`));
+    const edit = node('button', 'secondary', 'Editar'); edit.setAttribute('aria-label', `Editar cuenta ${a.name}`); edit.onclick = () => openAccount(a);
     const select = node('button', 'primary account-enter', 'Entrar →'); select.setAttribute('aria-label', `Entrar a ${a.name}`); select.onclick = () => enterAccount(a.id);
     const refresh = node('button', 'text-button', 'Actualizar'); refresh.disabled = a.type === 'm3u' && !a.config.url; refresh.title = refresh.disabled ? 'Vuelve a agregar el archivo local para actualizarlo.' : 'Actualizar catálogo'; refresh.onclick = () => refreshAccount(a.id);
     const remove = node('button', 'icon-button', '×'); remove.setAttribute('aria-label', `Eliminar cuenta ${a.name}`); remove.onclick = () => { deleteId = a.id; $('#delete-error').textContent = ''; $('#delete-dialog').showModal(); };
-    row.append(info, select, refresh, remove); $('#accounts-list').append(row);
+    const actions = node('div', 'account-actions'); actions.append(select, edit, refresh, remove); row.append(avatar, info, actions); $('#accounts-list').append(row);
   }
 }
 async function refreshAccount(id) {
@@ -236,7 +274,7 @@ $('#series-dialog').addEventListener('cancel', () => { episodeVersion++; });
 function stopPlayback() {
   playbackVersion++; player?.destroy(); player = null; current = null;
   video.hidden = true; $('#track-controls').hidden = true;
-  $('#watch-area').hidden = true; $('#placeholder').hidden = false;
+  $('#watch-area').hidden = true; $('#placeholder').hidden = false; epg.renderPlaying();
 }
 function updateTracks() {
   const audio = player?.audioTracks() || [], subtitles = player?.subtitleTracks() || [];
@@ -255,6 +293,7 @@ function playItem(item) {
   $('#watch-area').hidden = false; $('#track-controls').hidden = false; $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
   player = createPlayer(video, { status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
   player.play(item, account()?.config.url); updateTracks();
+  if (item.kind === 'live') epg.showPlaying();
   renderItems(); $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 $('#audio-track').onchange = () => player?.selectAudio($('#audio-track').value);
@@ -299,7 +338,7 @@ window.addEventListener('beforeunload', () => { player?.destroy(); multiscreen.s
 try {
   const loaded = await readState();
   if (!Array.isArray(loaded?.accounts) || !loaded.favorites || typeof loaded.favorites !== 'object' || loaded.accounts.some(a => !a.id || !Array.isArray(a.items) || !a.config || !['m3u', 'xtream'].includes(a.type))) throw new Error('Los datos de cuentas no se pueden leer.');
-  state = loaded;
+  state = { ...loaded, accounts: loaded.accounts.map(a => a.type === 'm3u' ? { ...a, items: classifyM3U(a.items) } : a) };
   if (!state.accounts.some(a => a.id === state.activeId)) state.activeId = state.accounts[0]?.id || null;
 } catch { storageFailed = true; notify('No se pudieron abrir las cuentas guardadas. Reinicia la aplicación. Tus datos no se sobrescribirán.'); }
 render();

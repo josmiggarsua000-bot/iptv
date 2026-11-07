@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data:; media-src 'self' https: http: blob:; connect-src 'self' https: http:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'" />
+  <title>Nexo IPTV</title>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="Nexo IPTV inicio"><span class="brand-icon">N</span><span>NEXO<span class="brand-sub">IPTV PLAYER</span></span></a>
+      <div class="sidebar-label">TU BIBLIOTECA</div>
+      <nav aria-label="Biblioteca">
+        <button class="nav-item active" id="all-view"><span>▣</span> TV en vivo <span class="count" id="total">0</span></button>
+        <button class="nav-item" id="favorites-view"><span>☆</span> Favoritos <span class="count" id="favorite-count">0</span></button>
+      </nav>
+      <div class="sidebar-label categories-label">CATEGORÍAS</div>
+      <div id="categories" class="categories"></div>
+      <div class="sidebar-bottom"><span class="device-dot"></span> Tu espacio, tus canales <small>Edición de escritorio · v0.1</small></div>
+    </aside>
+    <main>
+      <header class="topbar"><div><span class="eyebrow">BIENVENIDO A NEXO</span><h1>Tu televisión. A tu manera.</h1></div><button class="primary" id="add-list">＋ Añadir lista</button></header>
+      <section class="watch-area" aria-label="Reproductor">
+        <div class="player" id="player">
+          <video id="video" controls playsinline aria-label="Reproductor de canal" hidden></video>
+          <div class="player-placeholder" id="placeholder"><div class="play-mark">▶︎</div><h2>Una ventana a tus canales</h2><p>Añade tu lista y elige qué ver.</p><button class="secondary" id="player-add">Añadir mi primera lista <span>↗</span></button></div>
+          <div class="player-badge">NEXO <span>PLAYER</span></div>
+        </div>
+        <div class="now-playing"><div><span class="eyebrow">AHORA EN PANTALLA</span><h2 id="current-name">Tu próximo canal favorito</h2><p id="playback-status" role="status">Todo empieza con tu lista de canales.</p></div><button class="icon-button" id="fullscreen" aria-label="Pantalla completa" title="Pantalla completa">⛶</button></div>
+      </section>
+      <section class="library" aria-label="Canales">
+        <div class="library-toolbar"><div><h2 id="view-title">TV en vivo <span id="visible-count">0 canales</span></h2><p id="list-name">Tu biblioteca personal de televisión</p></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Buscar un canal…" aria-label="Buscar un canal" /></label></div>
+        <div id="channels" class="channel-grid"></div>
+        <div id="empty" class="empty"><span class="empty-icon">▤</span><h3>Tu biblioteca está por comenzar</h3><p>Importa una lista M3U desde tu equipo o pega un enlace.<br>Nosotros ponemos el reproductor. Tú eliges los canales.</p><button id="empty-add" class="text-button">＋ Añadir lista de canales</button></div>
+        <button id="load-more" class="secondary" hidden>Mostrar más canales</button>
+      </section>
+      <footer><span><i></i> Listo para conectar</span><span>Hecho para disfrutar en pantalla grande</span></footer>
+    </main>
+  </div>
+  <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><div><span class="eyebrow">TU CONTENIDO, EN UN SOLO LUGAR</span><h2>Añadir lista de canales</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Cerrar">×</button></div><p class="muted">Conecta una lista M3U de tu proveedor o importa un archivo.</p><label class="field">Nombre de la lista<input id="playlist-name" maxlength="80" placeholder="Mi televisión" /></label><label class="field">Enlace M3U<input id="playlist-url" type="url" placeholder="https://tu-proveedor.com/lista.m3u" /></label><div class="divider"><span>o desde tu equipo</span></div><label class="file-picker">↥ Seleccionar archivo M3U<input id="playlist-file" type="file" accept=".m3u,.m3u8,text/plain,audio/x-mpegurl" /><span id="file-name">Ningún archivo seleccionado</span></label><p class="form-note">La nueva lista sustituirá la actual. Tus favoritos se conservan si el canal mantiene su URL. Los datos se guardan solo en este equipo.</p><p id="import-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" id="cancel-import" class="secondary">Cancelar</button><button type="submit" class="primary" id="import-submit">Importar canales →</button></div></form></dialog>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

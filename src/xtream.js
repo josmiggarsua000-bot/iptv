@@ -31,7 +31,7 @@ export async function loadXtream(config, request) {
     return { kind, items: streams.value.filter(s => s.stream_id != null || s.series_id != null).map(s => {
       const streamId = s.series_id ?? s.stream_id;
       return {
-        id: `${kind}:${streamId}`, streamId, kind,
+        id: `${kind}:${streamId}`, streamId, kind, epgId: String(s.epg_channel_id || ''),
         name: String(s.name || 'Sin título'), group: String(groupMap.get(String(s.category_id)) || 'Sin categoría'),
         logo: httpUrl(s.stream_icon || s.cover) || '',
         url: kind === 'series' ? '' : streamUrl(config, kind === 'live' ? 'live' : 'movie', streamId, kind === 'live' ? 'm3u8' : extensionOf(s.container_extension))
@@ -39,7 +39,9 @@ export async function loadXtream(config, request) {
     }) };
   }));
   if (catalogs.every(c => c.error)) throw new Error('No se pudo cargar el catálogo del proveedor.');
-  return { items: catalogs.flatMap(c => c.items), warnings: catalogs.filter(c => c.error).map(c => c.kind) };
+  const expires = Number(auth.user_info.exp_date);
+  const accountInfo = { expiresAt: expires > 0 && Number.isFinite(new Date(expires * 1000).getTime()) ? expires * 1000 : null, status: String(auth.user_info.status || ''), maxConnections: Number(auth.user_info.max_connections) || null };
+  return { items: catalogs.flatMap(c => c.items), warnings: catalogs.filter(c => c.error).map(c => c.kind), accountInfo };
 }
 export async function loadEpisodes(config, seriesId, request) {
   const data = await request(apiUrl(config, 'get_series_info', { series_id: String(seriesId) }));

@@ -1,6 +1,8 @@
-const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, net } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const { fetchText } = require('./download.cjs');
+const { spawn } = require('node:child_process');
 
 app.whenReady().then(() => {
   const stateFile = path.join(app.getPath('userData'), 'accounts.enc');
@@ -16,35 +18,31 @@ app.whenReady().then(() => {
     checkSender(event);
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) throw new Error('No hay un almacén de claves seguro disponible.');
     const json = JSON.stringify(state);
-    if (Buffer.byteLength(json) > 40 * 1024 * 1024) throw new Error('Las cuentas superan el límite de almacenamiento de 40 MB.');
+    if (Buffer.byteLength(json) > 256 * 1024 * 1024) throw new Error('Las cuentas superan el límite de almacenamiento de 256 MB.');
     await fs.mkdir(path.dirname(stateFile), { recursive: true });
     await fs.writeFile(stateFile + '.tmp', safeStorage.encryptString(json));
     await fs.rename(stateFile + '.tmp', stateFile);
   });
-  ipcMain.handle('playlist:fetch', async (event, address) => {
-    if (event.senderFrame !== event.sender.mainFrame) throw new Error('Origen no permitido.');
+  ipcMain.handle('playlist:fetch', async (event, address, kind) => {
+    checkSender(event);
+    return fetchText(address, { fetchImpl: (url, options) => net.fetch(url, options), epg: kind === 'epg' });
+  });
+  ipcMain.handle('player:vlc', async (event, address) => {
+    checkSender(event);
     const url = new URL(address);
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Solo se admiten enlaces HTTP o HTTPS.');
-    const response = await fetch(url, { signal: AbortSignal.timeout(20000) });
-    if (!response.ok) throw new Error(`El proveedor respondió con HTTP ${response.status}.`);
-    const reader = response.body.getReader();
-    const chunks = []; let bytes = 0;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        bytes += value.byteLength;
-        if (bytes > 20 * 1024 * 1024) throw new Error('La lista supera el límite de 20 MB.');
-        chunks.push(Buffer.from(value));
-      }
-    } finally { await reader.cancel(); }
-    return { text: Buffer.concat(chunks).toString('utf8'), url: response.url };
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('El enlace de vídeo no es válido.');
+    if (process.platform !== 'win32') throw new Error('La integración con VLC está disponible en Windows.');
+    const candidates = [process.env.ProgramFiles, process.env['ProgramFiles(x86)']].filter(Boolean).map(root => path.join(root, 'VideoLAN', 'VLC', 'vlc.exe'));
+    let executable;
+    for (const candidate of candidates) { try { await fs.access(candidate); executable = candidate; break; } catch {} }
+    if (!executable) throw new Error('Instala VLC desde videolan.org en su carpeta predeterminada para reproducir formatos de audio o subtítulos no compatibles aquí.');
+    await new Promise((resolve, reject) => { const child = spawn(executable, ['--no-one-instance', '--', url.href], { detached: true, stdio: 'ignore' }); child.once('error', () => reject(new Error('No se pudo abrir VLC.'))); child.once('spawn', () => { child.unref(); resolve(); }); });
   });
   const createWindow = () => {
     const window = new BrowserWindow({
       width: 1440, height: 940, minWidth: 1000, minHeight: 700,
       backgroundColor: '#090713', title: 'Nexo IPTV', autoHideMenuBar: true,
-      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true }
+      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, enableBlinkFeatures: 'AudioVideoTracks' }
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());

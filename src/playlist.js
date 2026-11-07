@@ -24,13 +24,13 @@ export function parseM3U(text, base) {
     if (line.startsWith('#EXTINF:')) {
       const [attributes, title] = splitInfo(line);
       const attrs = Object.fromEntries([...attributes.matchAll(/([\w-]+)="([^"]*)"/g)].map(m => [m[1], m[2]]));
-      info = { name: title || attrs['tvg-name'] || 'Canal sin nombre', group: attrs['group-title'] || '', logo: httpUrl(attrs['tvg-logo']) || '' };
+      info = { name: title || attrs['tvg-name'] || 'Canal sin nombre', group: attrs['group-title'] || '', logo: httpUrl(attrs['tvg-logo']) || '', epgId: attrs['tvg-id'] || '' };
       group = '';
     } else if (line.startsWith('#EXTGRP:')) group = line.slice(8).trim();
     else if (line && !line.startsWith('#')) {
       const url = httpUrl(line, base);
       if (url && !seen.has(url)) {
-        channels.push({ id: url, url, name: info?.name || `Canal ${channels.length + 1}`, group: info?.group || group || 'Sin categoría', logo: info?.logo || '' });
+        channels.push({ id: url, url, name: info?.name || `Canal ${channels.length + 1}`, group: info?.group || group || 'Sin categoría', logo: info?.logo || '', epgId: info?.epgId || '' });
         seen.add(url);
       }
       info = null;

@@ -9,7 +9,7 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-desktop-'));
 app.setPath('userData', profile);
 app.disableHardwareAcceleration();
 let fixture;
-const deadline = setTimeout(() => { console.error('Desktop smoke test timed out'); app.exit(1); }, 45000);
+const deadline = setTimeout(() => { console.error('Desktop smoke test timed out'); app.exit(1); }, 90000);
 app.once('browser-window-created', (_, window) => {
   window.hide();
   window.webContents.once('did-finish-load', async () => {
@@ -28,14 +28,28 @@ app.once('browser-window-created', (_, window) => {
       assert.equal(bytes.includes(Buffer.from('fixture-secret-not-real')), false);
       assert.deepEqual(JSON.parse(safeStorage.decryptString(bytes)), state);
       assert.deepEqual(await window.webContents.executeJavaScript('window.desktop.readState()'), state);
-      fixture = http.createServer((req, res) => { res.end('#EXTM3U\n#EXTINF:-1,Desktop\nhttps://example.com/live.m3u8'); });
+      fixture = http.createServer((req, res) => {
+        if (req.url.startsWith('/dual.mp4')) { res.setHeader('Content-Type', 'video/mp4'); res.end(fs.readFileSync(path.join(__dirname, 'fixtures/dual-audio.mp4'))); }
+        else res.end('#EXTM3U\n#EXTINF:-1,Desktop\nhttps://example.com/live.m3u8');
+      });
       await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
       const response = await window.webContents.executeJavaScript(`window.desktop.fetchPlaylist('http://127.0.0.1:${fixture.address().port}/list')`);
       assert.match(response.text, /^#EXTM3U/);
       let rejected = false;
       try { await window.webContents.executeJavaScript("window.desktop.fetchPlaylist('file:///C:/Windows/win.ini')"); } catch { rejected = true; }
       assert.equal(rejected, true, 'IPC rejects local file URLs');
-      console.log('Desktop Windows: interfaz de producción, IPC, cifrado/lectura real de cuentas y descarga HTTP: OK');
+      const playbackState = { ...state, accounts: [{ id: 'play', name: 'Prueba multimedia', type: 'm3u', config: {}, items: [{ id: 'film', name: 'Dual', kind: 'movie', group: 'Cine', logo: '', url: `http://127.0.0.1:${fixture.address().port}/dual.mp4` }] }] };
+      await window.webContents.executeJavaScript(`window.desktop.saveState(${JSON.stringify(playbackState)})`);
+      await new Promise(resolve => { window.webContents.once('did-finish-load', resolve); window.webContents.reload(); });
+      const wait = expression => window.webContents.executeJavaScript(`new Promise((resolve, reject) => { let n=0; const timer=setInterval(() => { if (${expression}) { clearInterval(timer); resolve(); } else if (++n>100) { clearInterval(timer); reject(new Error('Multimedia check timed out')); } },100); })`);
+      await wait("document.querySelector('.account-enter')");
+      await window.webContents.executeJavaScript("document.querySelector('.account-enter').click()", true);
+      await wait("!document.querySelector('.app').hidden");
+      await window.webContents.executeJavaScript("document.querySelector('[data-view=movie]').click(); document.querySelector('#video').muted = true; document.querySelector('.content-play').click()", true);
+      await wait("document.querySelector('#video').currentTime > 0.2 && document.querySelector('#audio-track').options.length === 2");
+      await window.webContents.executeJavaScript("const select=document.querySelector('#audio-track'); select.value='1'; select.dispatchEvent(new Event('change'))");
+      await wait("document.querySelector('#video').audioTracks[1].enabled");
+      console.log('Desktop Windows: interfaz, IPC, cifrado, descarga HTTP, reproducción MP4 y selección de audio dual: OK');
       clearTimeout(deadline);
       fixture.close();
       for (const win of BrowserWindow.getAllWindows()) win.destroy();

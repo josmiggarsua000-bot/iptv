@@ -1,6 +1,6 @@
 {
   "name": "nexo-iptv",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "Reproductor IPTV de escritorio para Windows 11",
   "type": "module",
@@ -22,6 +22,7 @@
     "vite": "^8.3.6"
   },
   "dependencies": {
-    "hls.js": "^1.7.4"
+    "hls.js": "^1.7.4",
+    "mpegts.js": "^1.8.2"
   }
 }

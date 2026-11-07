@@ -1,4 +1,6 @@
-import Hls from 'hls.js';
+import { createPlayer } from './player.js';
+import { setupEpg } from './epg-ui.js';
+import { setupMultiscreen } from './multiscreen.js';
 import { parseM3U, filterChannels, httpUrl } from './playlist.js';
 import { classifyM3U, sections } from './library.js';
 import { loadXtream, loadEpisodes, normalizeServer } from './xtream.js';
@@ -10,9 +12,11 @@ const $ = selector => document.querySelector(selector);
 let state = { accounts: [], activeId: null, favorites: {} };
 let sessionAccountId = null;
 let view = 'home', group = '', limit = 120, accountType = null, busy = false, storageFailed = false;
-let current = null, hls = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null;
+let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null;
 const video = $('#video'), dialog = $('#account-dialog');
 const account = () => state.accounts.find(a => a.id === sessionAccountId);
+const epg = setupEpg({ getAccount: account, updateConfig, play: item => { setView('live'); playItem(item); } });
+const multiscreen = setupMultiscreen(account);
 const favorites = () => new Set(state.favorites[sessionAccountId] || []);
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text != null) el.textContent = text; return el; }
 function notify(message) { for (const id of ['notice', 'picker-notice']) { $(`#${id}`).textContent = message; $(`#${id}`).hidden = !message; } }
@@ -23,8 +27,8 @@ async function commit(next) {
 function resetFilters() { group = ''; limit = 120; $('#search').value = ''; }
 function setView(next) {
   if (!account()) return;
-  if (view !== next) stopPlayback();
-  view = next; resetFilters(); render(); window.scrollTo({ top: 0, behavior: 'instant' });
+  if (view !== next) { stopPlayback(); multiscreen.stopAll(); }
+  view = next; resetFilters(); render(); if (view === 'epg') epg.load(); window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function openAccount() {
   if (storageFailed) { notify('No se pudieron abrir tus cuentas guardadas. Reinicia la aplicación para evitar sobrescribirlas.'); return; }
@@ -58,28 +62,28 @@ $('#account-form').onsubmit = async event => {
   busy = true; $('#account-submit').disabled = true; $('#account-submit').textContent = 'Conectando…'; $('#account-error').textContent = '';
   try {
     const type = accountType === 'xtream' ? 'xtream' : 'm3u';
-    let items, config, warnings = [];
+    let items, config, accountInfo = null, warnings = [];
     if (type === 'xtream') {
       config = { server: normalizeServer($('#server-url').value), username: $('#username').value.trim(), password: $('#password').value };
       if (!config.username || !config.password) throw new Error('Completa el usuario y la contraseña.');
-      ({ items, warnings } = await loadXtream(config, requestJson));
+      ({ items, warnings, accountInfo } = await loadXtream(config, requestJson));
     } else {
       const file = accountType === 'm3u-file' ? $('#playlist-file').files[0] : null, url = accountType === 'm3u-url' ? $('#playlist-url').value.trim() : '';
       if (!file && !url) throw new Error('Selecciona un archivo o introduce el enlace M3U.');
       if (url && !httpUrl(url)) throw new Error('Usa un enlace HTTP o HTTPS válido.');
-      if (file?.size > 20 * 1024 * 1024) throw new Error('El archivo supera el límite de 20 MB.');
+      if (file?.size > 64 * 1024 * 1024) throw new Error('El archivo supera el límite de 64 MB.');
       const source = file ? { text: await file.text() } : await requestText(url);
       items = classifyM3U(parseM3U(source.text, source.url));
       config = { url: url || '' };
     }
-    const added = { id: crypto.randomUUID(), name: $('#account-name').value.trim() || (type === 'xtream' ? 'Mi cuenta Xtream' : $('#playlist-file').files[0]?.name || 'Mi lista M3U'), type, config, items, updatedAt: Date.now() };
+    const added = { id: crypto.randomUUID(), name: $('#account-name').value.trim() || (type === 'xtream' ? 'Mi cuenta Xtream' : $('#playlist-file').files[0]?.name || 'Mi lista M3U'), type, config, accountInfo, items, updatedAt: Date.now() };
     await commit({ ...state, accounts: [...state.accounts, added], activeId: added.id });
-    stopPlayback(); sessionAccountId = added.id; view = 'home'; resetFilters(); dialog.close();
+    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = added.id; view = 'home'; resetFilters(); dialog.close();
     $('#account-form').reset();
     notify(warnings.length ? `Cuenta conectada. No se pudo cargar: ${warnings.map(k => sections[k]).join(', ')}. Puedes actualizarla más tarde.` : 'Cuenta conectada. Elige TV en vivo, cine o series para empezar.');
     render();
   } catch (error) { $('#account-error').textContent = friendlyError(error); }
-  finally { busy = false; $('#account-submit').disabled = false; $('#account-submit').textContent = 'Conectar cuenta →'; }
+  finally { busy = false; $('#account-submit').disabled = false; $('#account-submit').textContent = 'Conectar cuenta →'; render(); }
 };
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => setView(button.dataset.view);
 for (const button of document.querySelectorAll('[data-open]')) button.onclick = () => { if (!account()) openAccount(); else setView(button.dataset.open); };
@@ -89,13 +93,15 @@ async function enterAccount(id) {
   busy = true;
   try {
     await commit({ ...state, activeId: id });
-    stopPlayback(); sessionAccountId = id; view = 'home'; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
+    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = id; view = 'home'; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
   } catch (error) { notify(friendlyError(error)); render(); }
-  finally { busy = false; }
+  finally { busy = false; render(); }
+  const selected = account();
+  if (selected?.id === id && selected.config.refreshOnEntry !== false && (selected.type === 'xtream' || selected.config.url)) await refreshAccount(id);
 }
 $('#change-account').onclick = () => {
   if (busy) return;
-  stopPlayback(); sessionAccountId = null; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
+  stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = null; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
 };
 $('#hero-add').onclick = () => setView('live');
 $('#search').oninput = () => { limit = 120; renderItems(); };
@@ -108,8 +114,18 @@ function render() {
   $('#picker-title').textContent = state.accounts.length ? '¿Qué cuenta vas a usar?' : 'Tu universo empieza aquí.';
   $('#picker-description').textContent = state.accounts.length ? 'Selecciona una cuenta guardada o agrega una nueva.' : 'Agrega tu primera cuenta para comenzar.';
   $('#active-account-name').textContent = active?.name || '';
-  $('#home-view').hidden = view !== 'home'; $('#library-view').hidden = view === 'home';
-  $('#page-label').textContent = view === 'home' ? 'INICIO' : view === 'favorites' ? 'FAVORITOS' : sections[view].toUpperCase();
+  $('#refresh-account').disabled = busy || !active;
+  const remote = active?.type === 'xtream' || !!active?.config.url;
+  $('#auto-refresh').disabled = !remote; $('#auto-refresh').checked = !!remote && active?.config.refreshOnEntry !== false;
+  $('#auto-refresh').title = remote ? 'Actualizar catálogo al seleccionar esta cuenta' : 'Los archivos locales se actualizan con Refresh, seleccionando el archivo de nuevo';
+  $('#multi-limit').textContent = `Elige un canal por pantalla. Solo una pantalla tendrá sonido. ${active?.accountInfo?.maxConnections ? `Tu proveedor informa un límite de ${active.accountInfo.maxConnections} conexiones para esta cuenta.` : 'El proveedor debe permitir hasta 4 conexiones simultáneas.'}`;
+  const expires = active?.accountInfo?.expiresAt;
+  $('#account-expiration').textContent = expires ? `Vencimiento: ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'long', timeStyle: 'short' }).format(expires)}${expires < Date.now() ? ' · VENCIDA' : ''}` : 'Vencimiento: No informado por el proveedor';
+  $('#account-expiration').classList.toggle('expired', !!expires && expires < Date.now());
+  $('#account-updated').textContent = active?.updatedAt ? `Lista actualizada: ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'short', timeStyle: 'short' }).format(active.updatedAt)}` : '';
+  $('#home-view').hidden = view !== 'home'; $('#library-view').hidden = !['live', 'movie', 'series', 'favorites'].includes(view);
+  $('#epg-view').hidden = view !== 'epg'; $('#multiscreen-view').hidden = view !== 'multi';
+  $('#page-label').textContent = view === 'home' ? 'INICIO' : view === 'favorites' ? 'FAVORITOS' : ({ epg: 'GUÍA EPG', multi: 'MULTISCREEN', ...sections }[view] || '').toUpperCase();
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   for (const kind of Object.keys(sections)) {
     const count = (active?.items || []).filter(i => i.kind === kind).length;
@@ -121,7 +137,7 @@ function render() {
   $('#home-account').textContent = active ? `${active.name} / ${active.type === 'xtream' ? 'XTREAM CODES' : 'M3U'}` : 'Agrega una cuenta para empezar';
   renderAccounts();
   $('#categories').replaceChildren();
-  $('.category-label').hidden = view === 'home';
+  $('.category-label').hidden = !['live', 'movie', 'series', 'favorites'].includes(view);
   const groups = new Map(); sectionItems().forEach(i => groups.set(i.group, (groups.get(i.group) || 0) + 1));
   for (const [name, count] of groups) {
     const button = node('button', `category${group === name ? ' active' : ''}`);
@@ -147,14 +163,15 @@ function renderAccounts() {
 async function refreshAccount(id) {
   if (busy) return; busy = true; notify('Actualizando el catálogo…');
   try {
-    const a = state.accounts.find(a => a.id === id); let items, warnings = [];
-    if (a.type === 'xtream') ({ items, warnings } = await loadXtream(a.config, requestJson));
+    const a = state.accounts.find(a => a.id === id); let items, warnings = [], accountInfo = a.accountInfo;
+    if (a.type === 'm3u' && !a.config.url) { notify('Selecciona el archivo M3U actualizado. Si cancelas, se conserva la lista actual.'); $('#local-refresh-file').click(); return; }
+    if (a.type === 'xtream') ({ items, warnings, accountInfo } = await loadXtream(a.config, requestJson));
     else { const source = await requestText(a.config.url); items = classifyM3U(parseM3U(source.text, source.url)); }
     // Keep existing sections when the provider temporarily fails to return them.
     if (warnings.length) items.push(...a.items.filter(i => warnings.includes(i.kind)));
-    await commit({ ...state, accounts: state.accounts.map(old => old.id === id ? { ...a, items, updatedAt: Date.now() } : old) });
+    await commit({ ...state, accounts: state.accounts.map(old => old.id === id ? { ...a, items, accountInfo, updatedAt: Date.now() } : old) });
     notify(warnings.length ? `Actualización parcial. Se conservó el catálogo anterior de: ${warnings.map(k => sections[k]).join(', ')}.` : 'Catálogo actualizado.'); render();
-  } catch (error) { notify(friendlyError(error)); } finally { busy = false; }
+  } catch (error) { notify(`No se pudo actualizar. Se conserva tu catálogo anterior. ${friendlyError(error)}`); } finally { busy = false; render(); }
 }
 $('#cancel-delete').onclick = () => $('#delete-dialog').close();
 $('#confirm-delete').onclick = async () => {
@@ -162,7 +179,7 @@ $('#confirm-delete').onclick = async () => {
   try {
     const accounts = state.accounts.filter(a => a.id !== deleteId), nextFavorites = { ...state.favorites }; delete nextFavorites[deleteId];
     await commit({ ...state, accounts, activeId: state.activeId === deleteId ? accounts[0]?.id || null : state.activeId, favorites: nextFavorites });
-    stopPlayback(); sessionAccountId = null; resetFilters(); $('#delete-dialog').close(); render();
+    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = null; resetFilters(); $('#delete-dialog').close(); render();
   } catch (error) { $('#delete-error').textContent = friendlyError(error); } finally { busy = false; }
 };
 function renderItems() {
@@ -213,31 +230,68 @@ $('#season-select').onchange = renderEpisodes;
 $('#close-series').onclick = () => { episodeVersion++; $('#series-dialog').close(); };
 $('#series-dialog').addEventListener('cancel', () => { episodeVersion++; });
 function stopPlayback() {
-  playbackVersion++; hls?.destroy(); hls = null; current = null;
-  video.onplaying = null; video.onwaiting = null; video.onerror = null;
-  video.pause(); video.removeAttribute('src'); video.load(); video.hidden = true;
+  playbackVersion++; player?.destroy(); player = null; current = null;
+  video.hidden = true; $('#track-controls').hidden = true;
   $('#watch-area').hidden = true; $('#placeholder').hidden = false;
+}
+function updateTracks() {
+  const audio = player?.audioTracks() || [], subtitles = player?.subtitleTracks() || [];
+  $('#audio-track').replaceChildren();
+  for (const track of audio) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; $('#audio-track').append(option); }
+  if (!audio.length) $('#audio-track').append(node('option', '', 'Automático / no expuestas'));
+  $('#audio-track').disabled = !audio.length;
+  $('#subtitle-track').replaceChildren();
+  const off = node('option', '', 'Desactivados'); off.value = ''; $('#subtitle-track').append(off);
+  for (const track of subtitles) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; $('#subtitle-track').append(option); }
+  $('#track-note').textContent = audio.length ? 'Si una pista no suena, prueba otra: algunos códecs necesitan VLC.' : 'El motor no expone pistas alternativas para este archivo. Puedes cargar SRT/VTT o usar VLC para audio dual, AC3/DTS y subtítulos integrados no compatibles.';
 }
 function playItem(item) {
   stopPlayback(); current = item;
   const version = playbackVersion;
-  $('#watch-area').hidden = false; $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
-  const status = message => { if (version === playbackVersion) $('#playback-status').textContent = message; };
-  status('Conectando con la señal…');
-  const start = () => video.play().catch(error => { if (error.name !== 'AbortError') status('Pulsa reproducir. Si no inicia, comprueba el formato y la conexión.'); });
-  video.onplaying = () => status(`Reproduciendo · ${item.group}`); video.onwaiting = () => status('Cargando señal…');
-  video.onerror = () => status('No se pudo reproducir. El enlace puede estar fuera de línea o usar un formato no compatible.');
-  if (/\.m3u8(?:[?#]|$)/i.test(item.url) && Hls.isSupported()) {
-    const instance = new Hls({ enableWorker: true }); hls = instance;
-    instance.on(Hls.Events.MANIFEST_PARSED, start);
-    instance.on(Hls.Events.ERROR, (_, data) => { if (data.fatal && version === playbackVersion) { status('No se pudo cargar HLS. Revisa la conexión y los permisos CORS del proveedor.'); instance.destroy(); if (hls === instance) hls = null; } });
-    instance.loadSource(item.url); instance.attachMedia(video);
-  } else { video.src = item.url; start(); }
+  $('#watch-area').hidden = false; $('#track-controls').hidden = false; $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
+  player = createPlayer(video, { status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
+  player.play(item, account()?.config.url); updateTracks();
   renderItems(); $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+$('#audio-track').onchange = () => player?.selectAudio($('#audio-track').value);
+$('#subtitle-track').onchange = () => player?.selectSubtitle($('#subtitle-track').value);
+$('#subtitle-file').onchange = async () => {
+  const file = $('#subtitle-file').files[0]; if (!file || !player) return;
+  try { await player.addSubtitle(file); } catch (error) { $('#playback-status').textContent = friendlyError(error); }
+  finally { $('#subtitle-file').value = ''; }
+};
+$('#open-vlc').onclick = async () => {
+  if (!current) return;
+  if (!window.desktop?.openVlc) { $('#playback-status').textContent = 'Abrir en VLC está disponible en la aplicación de Windows con VLC instalado.'; return; }
+  try { await window.desktop.openVlc(current.url); player?.destroy(); player = null; updateTracks(); $('#playback-status').textContent = 'Abierto en VLC. Allí puedes elegir todas las pistas compatibles de audio y subtítulos.'; }
+  catch (error) { $('#playback-status').textContent = friendlyError(error); }
+};
+async function updateConfig(patch) {
+  if (busy) throw new Error('Espera a que termine la actualización actual.');
+  const a = account(); if (!a) throw new Error('Selecciona una cuenta.');
+  busy = true;
+  try { await commit({ ...state, accounts: state.accounts.map(old => old.id === a.id ? { ...old, config: { ...old.config, ...patch } } : old) }); render(); }
+  finally { busy = false; render(); }
+}
+$('#auto-refresh').onchange = async () => { try { await updateConfig({ refreshOnEntry: $('#auto-refresh').checked }); } catch (error) { notify(friendlyError(error)); render(); } };
+$('#refresh-account').onclick = async () => {
+  const a = account(); if (!a) return;
+  await refreshAccount(a.id);
+  if (a.config.epgUrl) await epg.load(true);
+};
+$('#local-refresh-file').onchange = async () => {
+  const file = $('#local-refresh-file').files[0], a = account(); if (!file || !a || busy) return;
+  busy = true;
+  try {
+    if (file.size > 64 * 1024 * 1024) throw new Error('El archivo supera 64 MB.');
+    const items = classifyM3U(parseM3U(await file.text()));
+    await commit({ ...state, accounts: state.accounts.map(old => old.id === a.id ? { ...old, items, updatedAt: Date.now() } : old) }); notify('Archivo actualizado. Se conservaron tus favoritos.'); render();
+  } catch (error) { notify(friendlyError(error)); }
+  finally { busy = false; $('#local-refresh-file').value = ''; render(); }
+};
 $('#close-player').onclick = () => { stopPlayback(); renderItems(); };
 $('#fullscreen').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#player').requestFullscreen(); } catch { $('#playback-status').textContent = 'No se pudo activar la pantalla completa.'; } };
-window.addEventListener('beforeunload', () => hls?.destroy());
+window.addEventListener('beforeunload', () => { player?.destroy(); multiscreen.stopAll(); });
 try {
   const loaded = await readState();
   if (!Array.isArray(loaded?.accounts) || !loaded.favorites || typeof loaded.favorites !== 'object' || loaded.accounts.some(a => !a.id || !Array.isArray(a.items) || !a.config || !['m3u', 'xtream'].includes(a.type))) throw new Error('Los datos de cuentas no se pueden leer.');

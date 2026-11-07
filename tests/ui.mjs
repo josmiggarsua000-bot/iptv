@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,7 +14,7 @@ try {
     vite.stdout.on('data', data => { if (data.toString().includes('5179')) { clearTimeout(timer); resolve(); } });
     vite.on('exit', code => { clearTimeout(timer); reject(new Error(`Vite terminó: ${code}`)); });
   });
-  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH === 'playwright' ? undefined : (process.env.CHROMIUM_PATH || '/usr/bin/chromium'), headless: true, args: ['--no-sandbox'] });
+  browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH === 'playwright' ? undefined : (process.env.CHROMIUM_PATH || '/usr/bin/chromium'), headless: true, args: ['--no-sandbox', '--enable-blink-features=AudioVideoTracks'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -37,20 +37,38 @@ try {
     return done;
   });
   const data = Buffer.from(media);
-  const playlist = port => `#EXTM3U\n#EXTINF:-1 group-title="Noticias",Noticias Uno\nhttp://127.0.0.1:${port}/video.webm\n#EXTINF:-1 group-title="Música",Música Dos\nhttp://127.0.0.1:${port}/video.webm?second=1`;
+  const playlist = port => `#EXTM3U\n#EXTINF:-1 tvg-id="news" group-title="Noticias",Noticias Uno\nhttp://127.0.0.1:${port}/video.webm\n#EXTINF:-1 group-title="Música",Música Dos\nhttp://127.0.0.1:${port}/video.webm?second=1`;
+  let requests = 0, denyList = false;
   if (process.argv.includes('--hls')) {
     hlsDir = await mkdtemp(join(tmpdir(), 'nexo-hls-'));
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-t', '6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-threads', '2', '-g', '24', '-hls_time', '1', '-hls_list_size', '0', join(hlsDir, 'stream.m3u8')]);
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000', '-t', '8', '-map', '0:v', '-map', '1:a', '-map', '2:a', '-c:v', 'libx264', '-threads', '2', '-pix_fmt', 'yuv420p', '-g', '24', '-c:a', 'aac', '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=spa', '-movflags', '+faststart', join(hlsDir, 'dual.mp4')]);
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', join(hlsDir, 'dual.mp4'), '-map', '0:v', '-map', '0:a:0', '-map', '0:a:1', '-c', 'copy', '-f', 'hls', '-hls_time', '1', '-hls_list_size', '0', '-var_stream_map', 'v:0,agroup:aud a:0,agroup:aud,language:eng,default:yes a:1,agroup:aud,language:spa', '-master_pl_name', 'dual-master.m3u8', '-hls_segment_filename', join(hlsDir, 'dual-%v-%03d.ts'), join(hlsDir, 'dual-%v.m3u8')]);
+    const master = await readFile(join(hlsDir, 'dual-master.m3u8'), 'utf8');
+    await writeFile(join(hlsDir, 'dual-master.m3u8'), master.replace('#EXTM3U', '#EXTM3U\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Español",LANGUAGE="es",AUTOSELECT=YES,DEFAULT=NO,FORCED=NO,URI="dual-subs.m3u8"').split('\n').map(line => line.startsWith('#EXT-X-STREAM-INF:') ? line + ',SUBTITLES="subs"' : line).join('\n'));
+    await writeFile(join(hlsDir, 'dual-subs.m3u8'), '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:8\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:8.0,\ndual-es.vtt\n#EXT-X-ENDLIST\n');
+    await writeFile(join(hlsDir, 'dual-es.vtt'), 'WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:126000\n\n00:00:00.000 --> 00:00:08.000\nSubtítulos HLS de prueba\n');
+
+
   }
   fixture = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/player_api.php') {
+    if (url.pathname === '/epg.xml') {
+      const time = ms => new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0,14) + ' +0000';
+      res.setHeader('Content-Type', 'application/xml');
+      res.end(`<tv><channel id="news"><display-name>Noticias Uno</display-name></channel><programme channel="news" start="${time(Date.now()-600000)}" stop="${time(Date.now()+1800000)}"><title>Programa de prueba</title><desc>Actualidad</desc></programme></tv>`);
+    }
+    else if (hlsDir && /^\/dual[-\w]*\.(mp4|m3u8|ts|vtt)$/.test(url.pathname)) {
+      res.setHeader('Content-Type', url.pathname.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : url.pathname.endsWith('.mp4') ? 'video/mp4' : url.pathname.endsWith('.vtt') ? 'text/vtt' : 'video/mp2t');
+      res.end(await readFile(join(hlsDir, url.pathname.slice(1))));
+    }
+    else if (url.pathname === '/player_api.php') {
       res.setHeader('Content-Type', 'application/json');
       const action = url.searchParams.get('action');
       let result;
       if (url.searchParams.get('username') !== 'demo +&' || url.searchParams.get('password') !== 'test/?!') result = { user_info: { auth: 0 } };
-      else if (!action) result = { user_info: { auth: 1, status: 'Active' } };
+      else if (!action) result = { user_info: { auth: 1, status: 'Active', exp_date: '1900000000', max_connections: '4' } };
       else if (action.endsWith('categories')) result = [{ category_id: 1, category_name: 'Selección neón' }];
       else if (action === 'get_live_streams') result = [{ stream_id: 1, name: 'TV Xtream', category_id: 1 }];
       else if (action === 'get_vod_streams') result = [{ stream_id: 2, name: 'Cine Xtream', category_id: 1, container_extension: 'webm' }];
@@ -64,7 +82,7 @@ try {
       res.end(await readFile(join(hlsDir, req.url.slice(1))));
     }
     else if (req.url.startsWith('/video') || req.url.startsWith('/movie/') || req.url.startsWith('/series/')) { res.setHeader('Content-Type', 'video/webm'); res.end(data); }
-    else { res.setHeader('Content-Type', 'text/plain'); res.end(playlist(fixture.address().port)); }
+    else { requests++; if (denyList) { res.writeHead(403); res.end(); } else { res.setHeader('Content-Type', 'text/plain'); res.end(playlist(fixture.address().port)); } }
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const port = fixture.address().port;
@@ -113,7 +131,30 @@ try {
   await page.getByRole('button', { name: 'Reproducir Noticias Uno', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
   assert.match(await page.locator('#playback-status').textContent(), /Reproduciendo/);
+  await page.locator('#subtitle-file').setInputFiles({ name: 'es.srt', mimeType: 'text/plain', buffer: Buffer.from('1\n00:00:00,000 --> 00:01:00,000\nSubtítulo de prueba') });
+  await page.waitForFunction(() => [...document.querySelector('#video').textTracks].some(t => t.mode === 'showing' && t.cues?.length));
+  assert.match(await page.locator('#subtitle-track').textContent(), /es.srt/);
+  await page.locator('#subtitle-track').selectOption('');
+  await page.waitForFunction(() => [...document.querySelector('#video').textTracks].every(t => t.mode !== 'showing'));
+  await page.locator('#epg-settings').click();
+  await page.locator('#epg-url').fill(`http://127.0.0.1:${port}/epg.xml`);
+  await page.locator('#epg-save').click();
+  await page.waitForSelector('#epg-dialog', { state: 'hidden' });
+  await goto('epg');
+  await page.waitForSelector('.epg-program');
+  assert.match(await page.locator('#epg-programs').textContent(), /Programa de prueba/);
+  await page.screenshot({ path: 'artifacts/epg.png', fullPage: true });
+  await goto('multi');
+  for (let i = 1; i <= 4; i++) {
+    await page.getByRole('button', { name: `Elegir canal para pantalla ${i}`, exact: true }).click();
+    await page.locator('#multi-options button').first().click();
+  }
+  await page.waitForFunction(() => [...document.querySelectorAll('#multi-grid video')].every(v => v.currentTime > 0));
+  await page.getByRole('button', { name: 'Escuchar pantalla 2', exact: true }).click();
+  assert.equal(await page.locator('#multi-grid video').evaluateAll(videos => videos.filter(v => !v.muted).length), 1);
+  await page.screenshot({ path: 'artifacts/multiscreen.png', fullPage: true });
   await goto('movie');
+  assert.equal(await page.locator('#multi-grid video').evaluateAll(videos => videos.every(v => !v.getAttribute('src'))), true);
   assert.equal(await page.locator('#watch-area').isVisible(), false);
   assert.equal(await page.locator('.content-card').count(), 1);
   await goto('series');
@@ -123,12 +164,37 @@ try {
   await page.locator('#picker-add').click();
   await page.locator('[data-type="m3u-file"]').click();
   await page.locator('[data-type="m3u-url"]').click();
-  await page.locator('#playlist-url').fill(`http://127.0.0.1:${port}/playlist.m3u`);
+  await page.locator('#playlist-url').fill(`http://127.0.0.1:${port}/get.php?username=fixture&password=fake&type=m3u_plus&output=ts`);
   await page.locator('#account-name').fill('Cuenta por URL');
   await page.locator('#account-submit').click();
   await page.waitForSelector('#account-dialog', { state: 'hidden' });
   assert.equal(await page.locator('.account-row').count(), 2);
   assert.equal(await page.locator('#count-favorites').textContent(), '0');
+  const beforeRefresh = requests;
+  await page.locator('#refresh-account').click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent === 'Catálogo actualizado.');
+  assert.ok(requests > beforeRefresh);
+  denyList = true;
+  await page.locator('#refresh-account').click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('Se conserva tu catálogo anterior'));
+  assert.equal(await page.locator('#count-live').textContent(), '2');
+  assert.match(await page.locator('#notice').textContent(), /HTTP 403/);
+  denyList = false;
+
+  await page.locator('#change-account').click();
+  const beforeEntry = requests;
+  await page.getByRole('button', { name: 'Entrar a Cuenta por URL', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#notice').textContent === 'Catálogo actualizado.');
+  assert.ok(requests > beforeEntry);
+  await page.locator('#auto-refresh').uncheck();
+  await page.waitForFunction(() => !document.querySelector('#refresh-account').disabled);
+  await page.locator('#change-account').click();
+  const disabledCount = requests;
+  await page.getByRole('button', { name: 'Entrar a Cuenta por URL', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.app').hidden);
+  assert.equal(requests, disabledCount);
+
+
   await page.locator('#change-account').click();
   await page.getByRole('button', { name: 'Entrar a Mi cuenta M3U', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#count-favorites').textContent === '1');
@@ -150,17 +216,18 @@ try {
   assert.equal(await page.locator('#count-live').textContent(), '1');
   assert.equal(await page.locator('#count-movie').textContent(), '1');
   assert.equal(await page.locator('#count-series').textContent(), '1');
+  assert.match(await page.locator('#account-expiration').textContent(), /2030/);
   await page.screenshot({ path: 'artifacts/cyberpunk-inicio.png', fullPage: true });
   await goto('movie');
   await page.getByRole('button', { name: 'Reproducir Cine Xtream', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
   await goto('series');
   await page.getByRole('button', { name: 'Ver episodios de Serie Xtream', exact: true }).click();
-  await page.waitForSelector('.episode');
+  await page.waitForSelector('#episodes .episode');
   assert.equal(await page.locator('#season-select option').count(), 2);
   await page.locator('#season-select').selectOption('2');
-  assert.match(await page.locator('.episode').textContent(), /Episodio dos/);
-  await page.locator('.episode').click();
+  assert.match(await page.locator('#episodes .episode').textContent(), /Episodio dos/);
+  await page.locator('#episodes .episode').click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
   assert.equal(await page.locator('#current-name').textContent(), 'Episodio dos');
   await page.screenshot({ path: 'artifacts/cyberpunk-series.png', fullPage: true });
@@ -191,13 +258,36 @@ try {
     await page.getByRole('button', { name: 'Reproducir Canal HLS', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#video').currentTime > 0.5);
     assert.match(await page.locator('#playback-status').textContent(), /Reproduciendo/);
-    console.log('HLS: manifiesto y segmentos H.264 reproducidos: OK');
+    await addM3u('Audio dual', `#EXTM3U\n#EXTINF:-1,Audio bilingüe\nhttp://127.0.0.1:${port}/dual-master.m3u8`);
+    await goto('live');
+    await page.getByRole('button', { name: 'Reproducir Audio bilingüe', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#audio-track').options.length === 2);
+    await page.locator('#audio-track').selectOption('1');
+    await page.waitForFunction(() => document.querySelector('#audio-track').value === '1' && document.querySelector('#video').currentTime > 0.5);
+    assert.match(await page.locator('#audio-track option:checked').textContent(), /spa/);
+    await page.waitForFunction(() => document.querySelector('#subtitle-track').options.length > 1);
+    await page.locator('#subtitle-track').selectOption('hls:0');
+    await page.waitForFunction(() => [...document.querySelector('#video').textTracks].some(t => t.mode === 'showing' && t.cues?.length));
+
+    await addM3u('MP4 dual', `#EXTM3U\n#EXTINF:-1 group-title="Películas",Película bilingüe\nhttp://127.0.0.1:${port}/dual.mp4`);
+    await goto('movie');
+    await page.getByRole('button', { name: 'Reproducir Película bilingüe', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#video').currentTime > 0.5);
+    assert.equal(await page.locator('#audio-track option').count(), 2);
+    await page.locator('#audio-track').selectOption('1');
+    await page.waitForFunction(() => document.querySelector('#video').audioTracks[1].enabled);
+    assert.match(await page.locator('#audio-track option:checked').textContent(), /spa/);
+    await addM3u('TS directo', `#EXTM3U\n#EXTINF:-1,Canal TS\nhttp://127.0.0.1:${port}/stream0.ts`);
+    await goto('live');
+    await page.getByRole('button', { name: 'Reproducir Canal TS', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
+    console.log('HLS H.264, selección de audio bilingüe y MPEG-TS directo: OK');
   }
   await page.setViewportSize({ width: 1000, height: 700 });
   await page.locator('#change-account').click();
   await page.screenshot({ path: 'artifacts/cyberpunk-1000px.png', fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('UI: cuentas M3U/URL/Xtream, autenticación, TV/cine/series, temporadas, reproducción, favoritos, cambio/eliminación de cuenta, persistencia y migración: OK');
+  console.log('UI: cuentas y migración, EPG XMLTV, vencimiento, Refresh manual/automático y opcional, SRT, 4 pantallas con audio exclusivo, cine y episodios: OK');
 } finally {
   await browser?.close();
   if (fixture) await new Promise(resolve => fixture.close(resolve));

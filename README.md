@@ -16,7 +16,25 @@ En las listas M3U, cine y series se identifican por las categorías (`Cine`, `Pe
 
 Puedes guardar varias cuentas, cambiar entre ellas, actualizar catálogos remotos y eliminar cuentas. Las listas de archivo se actualizan agregando el archivo nuevo. Los favoritos pertenecen a cada cuenta. La lista y favoritos de v0.1 se migran a una cuenta M3U al abrir la nueva versión; el almacenamiento anterior solo se elimina tras un guardado correcto.
 
-No incluye canales ni suscripciones, EPG, DRM, reproducción RTSP/UDP ni MPEG-TS directo. Compatible con HLS (`.m3u8`) y formatos que soporte Chromium. Algunos proveedores necesitan códecs, VPN o cabeceras que esta versión no admite. HLS requiere CORS en manifiestos y segmentos, también en Electron: la aplicación mantiene habilitada la seguridad del navegador. Una URL HLS sin extensión `.m3u8` no se identifica automáticamente.
+No incluye canales ni suscripciones, DRM ni reproducción RTSP/UDP. Compatible con HLS (`.m3u8`), MPEG-TS H.264/AAC mediante mpegts.js y formatos que soporte Chromium. Algunos proveedores necesitan códecs, VPN o cabeceras que esta versión no admite. HLS y MPEG-TS requieren CORS en manifiestos, segmentos y señal, también en Electron: la aplicación mantiene habilitada la seguridad del navegador. Una URL HLS sin extensión `.m3u8` no se identifica automáticamente.
+
+## EPG, actualización y vencimiento
+
+Dentro de una cuenta, pulsa **Configurar EPG** e introduce una URL XMLTV o XMLTV.GZ. En Xtream puedes usar **Usar EPG de mi cuenta Xtream**. Se guarda por cuenta y se puede quitar dejando la URL vacía. La sección **Guía EPG** asocia programas por `tvg-id`/`epg_channel_id`, o nombre como alternativa. Presenta programación actual y próxima en horario local, hasta 48 horas; conserva una ventana de 6 horas anteriores. Se pagina por 120 canales y la guía se conserva en memoria durante 30 minutos. La EPG es opcional.
+
+**Refresh** actualiza el catálogo sin borrar el anterior si la descarga falla. **Actualizar listas al entrar** está activado por defecto para fuentes remotas y puede desactivarse por cuenta desde Inicio. Los archivos locales no se pueden descargar otra vez: Refresh pide seleccionar su archivo actualizado. El botón también recarga una EPG configurada.
+
+En Inicio aparece el vencimiento que informa Xtream. Si no se proporciona (incluidas cuentas M3U), se muestra **No informado por el proveedor**. El dato se actualiza junto al catálogo.
+
+## Audio, subtítulos y cuatro pantallas
+
+Debajo del reproductor están los selectores de audio y subtítulos. Detectan audio alternativo y subtítulos HLS, y pistas nativas que exponga Electron con `AudioVideoTracks`. Puedes cargar SRT/VTT de hasta 5 MB; se eliminan al cambiar de contenido. La disponibilidad depende de la fuente y de sus códecs. Para AC3/DTS, determinados MKV o subtítulos integrados no admitidos, instala VLC en su ubicación estándar de Windows y pulsa **Abrir en VLC**. No se incluye VLC ni se convierten códecs. El modo navegador puede no exponer audio nativo; para ello usa la aplicación Electron.
+
+**Multiscreen** permite elegir cuatro canales de la cuenta, con buscador por pantalla y un único audio activo. Al salir de la sección, cambiar de cuenta o cerrar una pantalla se liberan sus reproductores. Tu proveedor debe permitir las conexiones simultáneas correspondientes; se muestra el máximo que informe Xtream. El ancho de banda y el hardware también limitan la reproducción.
+
+## Listas get.php sin extensión
+
+Se aceptan enlaces con query como `get.php?...&type=m3u_plus&output=ts`; no se exige que terminen en `.m3u`. El archivo descargado debe contener una lista M3U real. `output=ts` describe la señal MPEG-TS de los canales, no una extensión obligatoria de la lista. Un rechazo HTTP, una descarga demasiado lenta, un tamaño excesivo o un servidor inaccesible son problemas distintos y se muestran como tales. Las pruebas usan URLs falsas, nunca credenciales del usuario.
 
 ## Ejecutar en Windows 11
 
@@ -54,7 +72,7 @@ npm start       # escritorio; Linux necesita sesión gráfica y un almacén segu
 
 Las pruebas de UI usan `/usr/bin/chromium`; puedes definir `CHROMIUM_PATH` con otro ejecutable. Para Chromium de Playwright: `npx playwright install chromium`, después `CHROMIUM_PATH=playwright npm run test:ui`. Se guardan capturas en `artifacts/` (ignorado por Git).
 
-Las pruebas cubren M3U por archivo y URL, errores de autenticación, varios catálogos, episodios y temporadas, cambio/eliminación de cuentas, favoritos, búsqueda, categorías, persistencia, migración y reproducción. Se valida contra un proveedor simulado; la compatibilidad con un proveedor real y la reproducción del ejecutable deben comprobarse en Windows 11.
+Las pruebas cubren EPG, vencimiento, audio bilingüe MP4 y HLS, subtítulos HLS y SRT, cuatro vídeos simultáneos, Refresh manual/automático, M3U por archivo y URL, errores de autenticación, varios catálogos, episodios y temporadas, cambio/eliminación de cuentas, favoritos, búsqueda, categorías, persistencia, migración y reproducción. Se valida contra un proveedor simulado; la compatibilidad con un proveedor real y la reproducción del ejecutable deben comprobarse en Windows 11.
 
 ## Datos y credenciales
 
@@ -62,12 +80,16 @@ En Electron las cuentas, catálogos y favoritos se escriben en `accounts.enc` en
 
 **En modo navegador** se usa `localStorage` sin cifrado; el formulario lo advierte antes de conectar. No uses ese modo para cuentas sensibles en un equipo compartido. Los enlaces M3U pueden contener contraseñas. No hay telemetría ni servidor propio. Catálogos, logos y vídeo se solicitan al proveedor.
 
-Cada respuesta se limita a 20 MB y el estado de escritorio a 40 MB. Si el guardado falla se conservan los datos anteriores. Las actualizaciones con errores parciales conservan los catálogos anteriores de las secciones afectadas.
+Las descargas tienen un límite de 120 segundos: hasta 64 MB para listas/catálogos y 128 MB para EPG (también tras descomprimir GZIP). El estado cifrado de escritorio admite hasta 256 MB; el navegador conserva su propia cuota, normalmente mucho menor. Si el guardado falla se conservan los datos anteriores. Las actualizaciones con errores parciales conservan los catálogos anteriores de las secciones afectadas.
 
 ## Código
 
 - `electron/`: ventana aislada, descarga HTTP y almacenamiento cifrado.
-- `src/xtream.js`: API de cuentas, catálogos y episodios.
+- `src/xtream.js`: API de cuentas, catálogos, episodios y vencimiento.
+- `src/player.js`, `src/transport.js`: HLS, TS, pistas de audio y subtítulos.
+- `src/epg.js`, `src/epg-ui.js`: lectura XMLTV y guía por cuenta.
+- `src/multiscreen.js`: cuatro reproductores independientes.
+- `tests/fixtures/dual-audio.mp4`: señal sintética H.264 con dos pistas AAC, generada con FFmpeg para la prueba de Windows.
 - `src/library.js`, `src/playlist.js`: clasificación, migración y M3U.
 - `src/storage.js`, `src/network.js`: persistencia y solicitudes con límites.
 - `src/main.js`, `src/style.css`: interfaz y reproducción.

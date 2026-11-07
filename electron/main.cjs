@@ -8,7 +8,9 @@ const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 let mediaEngine;
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const assetsDirectory = path.join(__dirname, "../dist/assets");
+  const logoName = (await fs.readdir(assetsDirectory)).find(name => name.startsWith("nexo-pixel-") && name.endsWith(".png"));
   mediaEngine = createMediaEngine({ ffmpegPath, ffprobePath, fetchImpl: (url, options) => net.fetch(url, options) });
   const stateFile = path.join(app.getPath('userData'), 'accounts.enc');
   const checkSender = event => { if (event.senderFrame !== event.sender.mainFrame) throw new Error('Origen no permitido.'); };
@@ -49,6 +51,7 @@ app.whenReady().then(() => {
   });
   const createWindow = () => {
     const window = new BrowserWindow({
+      icon: logoName ? path.join(assetsDirectory, logoName) : undefined,
       width: 1440, height: 940, minWidth: 1000, minHeight: 700,
       backgroundColor: '#090713', title: 'Nexo IPTV', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, enableBlinkFeatures: 'AudioVideoTracks' }

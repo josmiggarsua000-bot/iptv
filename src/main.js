@@ -9,11 +9,13 @@ import { loadXtream, loadEpisodes, normalizeServer } from './xtream.js';
 import { requestText, requestJson, friendlyError } from './network.js';
 import { readState, writeState } from './storage.js';
 import './style.css';
+import './arcade.css';
 
 const $ = selector => document.querySelector(selector);
 let state = { accounts: [], activeId: null, favorites: {} };
 let sessionAccountId = null;
 let view = 'home', group = '', limit = 120, accountType = null, busy = false, storageFailed = false;
+let playbackQueue = [];
 let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null, editingId = null;
 const video = $('#video'), dialog = $('#account-dialog');
 const account = () => state.accounts.find(a => a.id === sessionAccountId);
@@ -295,8 +297,11 @@ function updateTracks() {
   updateClock();
   $('#track-note').textContent = player?.isCompatibility() ? 'Compatibilidad local: audio convertido a AAC. Las pistas de texto integradas se muestran aquí. Los subtítulos gráficos requieren un reproductor externo.' : audio.length ? 'Si una pista no suena, prueba otra: algunos códecs necesitan VLC.' : 'El motor no expone pistas alternativas para este archivo. Puedes cargar SRT/VTT o usar VLC para audio dual, AC3/DTS y subtítulos integrados no compatibles.';
 }
-function playItem(item) {
+function playItem(item, queue = null) {
+  const candidates = queue || (item.kind === 'episode' && episodes.some(ep => ep.id === item.id) ? episodes : filterChannels((account()?.items || []).filter(entry => entry.kind === item.kind && (view !== 'favorites' || favorites().has(entry.id))), { search: $('#search').value, group }));
   stopPlayback(); current = item;
+  playbackQueue = candidates.filter(entry => entry.url);
+  updatePlayerNavigation();
   const version = playbackVersion;
   $('#watch-area').hidden = false; $('#track-controls').hidden = true; $('#player-settings-toggle').setAttribute('aria-expanded', 'false'); $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
   player = createPlayer(video, { status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
@@ -304,6 +309,27 @@ function playItem(item) {
   if (item.kind === 'live') epg.showPlaying();
   renderItems(); $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+function updatePlayerNavigation() {
+  const index = playbackQueue.findIndex(item => item.id === current?.id);
+  const noun = current?.kind === 'live' ? 'canal' : current?.kind === 'episode' ? 'episodio' : 'título';
+  for (const [id, step] of [['player-previous', -1], ['player-next', 1]]) {
+    const target = playbackQueue[index + step], button = $(`#${id}`);
+    button.disabled = index < 0 || !target;
+    button.setAttribute('aria-label', `${step < 0 ? 'Anterior' : 'Siguiente'} ${noun}`);
+    button.title = target ? `${step < 0 ? 'Anterior' : 'Siguiente'}: ${target.name}` : `No hay ${noun} ${step < 0 ? 'anterior' : 'siguiente'}`;
+  }
+  $('#player-navigation-label').textContent = current?.name || '';
+}
+function changePlaying(step) {
+  const index = playbackQueue.findIndex(item => item.id === current?.id);
+  const item = index >= 0 && playbackQueue[index + step];
+  if (item) playItem(item, playbackQueue);
+}
+$('#player-previous').onclick = () => changePlaying(-1);
+$('#player-next').onclick = () => changePlaying(1);
+const intro = $('#startup-intro');
+intro.addEventListener('animationend', event => { if (event.target === intro) intro.remove(); });
+setTimeout(() => intro.remove(), 2000);
 function updateClock() {
   if (!player?.isCompatibility()) return;
   const position = player.position(), duration = player.duration();

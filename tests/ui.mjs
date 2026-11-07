@@ -25,6 +25,7 @@ try {
   await mkdir('artifacts', { recursive: true });
   assert.equal(await page.locator('.app').isVisible(), false);
   assert.equal(await page.locator('#account-picker button:visible').count(), 1);
+  await page.waitForSelector('#startup-intro', { state: 'detached' });
   await page.screenshot({ path: 'artifacts/inicio.png', fullPage: true });
   // Produce a real local media fixture without depending on an external channel.
   const media = await page.evaluate(async () => {
@@ -163,6 +164,19 @@ try {
   assert.match(await page.locator('#subtitle-track').textContent(), /es.srt/);
   await page.locator('#subtitle-track').selectOption('');
   await page.waitForFunction(() => [...document.querySelector('#video').textTracks].every(t => t.mode !== 'showing'));
+  // Previous/next honor the category, then preserve fullscreen when changing channel.
+  assert.equal(await page.locator('#player-next').isDisabled(), true);
+  await page.locator('#clear-category').click();
+  await page.getByRole('button', { name: 'Reproducir Noticias Uno', exact: true }).click();
+  await page.locator('#player-fullscreen').click();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+  await page.locator('#player-next').click();
+  await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Música Dos' && document.querySelector('#video').currentTime > 0);
+  assert.equal(await page.evaluate(() => document.fullscreenElement?.id), 'player');
+  assert.equal(await page.locator('#player-next').isDisabled(), true);
+  await page.locator('#player-previous').click();
+  await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Noticias Uno');
+  await page.locator('#player-fullscreen').click();
   await page.locator('#epg-settings').click();
   await page.locator('#epg-mode').selectOption('manual');
   await page.locator('#epg-url').fill(`http://127.0.0.1:${port}/epg.xml`);
@@ -315,6 +329,10 @@ try {
   await page.locator('#episodes .episode').click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
   assert.equal(await page.locator('#current-name').textContent(), 'Episodio dos');
+  await page.locator('#player-previous').click();
+  await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Episodio uno');
+  await page.locator('#player-next').click();
+  await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Episodio dos');
   await page.screenshot({ path: 'artifacts/cyberpunk-series.png', fullPage: true });
   await page.reload();
   assert.equal(await page.locator('.app').isVisible(), false);
@@ -377,7 +395,7 @@ try {
     await page.locator('#subtitle-track').selectOption('hls:0');
     await page.waitForFunction(() => [...document.querySelector('#video').textTracks].some(t => t.mode === 'showing' && t.cues?.length));
 
-    await addM3u('MP4 dual', `#EXTM3U\n#EXTINF:-1 group-title="Películas",Película bilingüe\nhttp://127.0.0.1:${port}/dual.mp4`);
+    await addM3u('MP4 dual', `#EXTM3U\n#EXTINF:-1 group-title="Películas",Película bilingüe\nhttp://127.0.0.1:${port}/dual.mp4\n#EXTINF:-1 group-title="Películas",Otra película\nhttp://127.0.0.1:${port}/dual.mp4?alternate=1`);
     await goto('movie');
     await page.getByRole('button', { name: 'Reproducir Película bilingüe', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#video').currentTime > 0.5);
@@ -386,6 +404,10 @@ try {
     await page.locator('#audio-track').selectOption('1');
     await page.waitForFunction(() => document.querySelector('#video').audioTracks[1].enabled);
     assert.match(await page.locator('#audio-track option:checked').textContent(), /spa/);
+    await page.locator('#player-next').click();
+    await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Otra película' && document.querySelector('#video').currentTime > 0);
+    await page.locator('#player-previous').click();
+    await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Película bilingüe');
     await addM3u('TS directo', `#EXTM3U\n#EXTINF:-1,Canal TS\nhttp://127.0.0.1:${port}/stream0.ts`);
     await goto('live');
     await page.getByRole('button', { name: 'Reproducir Canal TS', exact: true }).click();

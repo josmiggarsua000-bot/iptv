@@ -17,7 +17,7 @@ app.once('browser-window-created', (_, window) => {
       await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
         let attempts = 0;
         const timer = setInterval(() => {
-          if (document.querySelector('#add-account')?.onclick) { clearInterval(timer); resolve(); }
+          if (document.querySelector('#picker-add')?.onclick) { clearInterval(timer); resolve(); }
           else if (++attempts > 100) { clearInterval(timer); reject(new Error('La interfaz no inició')); }
         }, 100);
       })`);

@@ -8,19 +8,21 @@ import './style.css';
 
 const $ = selector => document.querySelector(selector);
 let state = { accounts: [], activeId: null, favorites: {} };
+let sessionAccountId = null;
 let view = 'home', group = '', limit = 120, accountType = null, busy = false, storageFailed = false;
 let current = null, hls = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null;
 const video = $('#video'), dialog = $('#account-dialog');
-const account = () => state.accounts.find(a => a.id === state.activeId);
-const favorites = () => new Set(state.favorites[state.activeId] || []);
+const account = () => state.accounts.find(a => a.id === sessionAccountId);
+const favorites = () => new Set(state.favorites[sessionAccountId] || []);
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text != null) el.textContent = text; return el; }
-function notify(message) { $('#notice').textContent = message; $('#notice').hidden = !message; }
+function notify(message) { for (const id of ['notice', 'picker-notice']) { $(`#${id}`).textContent = message; $(`#${id}`).hidden = !message; } }
 async function commit(next) {
   if (storageFailed) throw new Error('No se pudieron abrir tus datos. Reinicia la aplicación antes de guardar cambios.');
   await writeState(next); state = next;
 }
 function resetFilters() { group = ''; limit = 120; $('#search').value = ''; }
 function setView(next) {
+  if (!account()) return;
   if (view !== next) stopPlayback();
   view = next; resetFilters(); render(); window.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -32,17 +34,19 @@ function openAccount() {
   document.querySelectorAll('[data-type]').forEach(b => b.setAttribute('aria-pressed', 'false'));
   dialog.showModal();
 }
-for (const id of ['add-account', 'hero-add', 'empty-add']) $(`#${id}`).onclick = openAccount;
+for (const id of ['picker-add', 'empty-add']) $(`#${id}`).onclick = openAccount;
 for (const id of ['close-dialog', 'cancel-account']) $(`#${id}`).onclick = () => { if (!busy) dialog.close(); };
 dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
 for (const button of document.querySelectorAll('[data-type]')) button.onclick = () => {
   if (busy) return;
   accountType = button.dataset.type;
   document.querySelectorAll('[data-type]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
-  $('#account-fields').hidden = false; $('#xtream-fields').hidden = accountType !== 'xtream'; $('#m3u-fields').hidden = accountType !== 'm3u';
+  $('#account-fields').hidden = false; $('#xtream-fields').hidden = accountType !== 'xtream'; $('#m3u-fields').hidden = accountType === 'xtream';
+  $('#m3u-url-field').hidden = accountType !== 'm3u-url'; $('#m3u-file-field').hidden = accountType !== 'm3u-file';
   $('#account-submit').disabled = false;
   $('#server-url').required = accountType === 'xtream'; $('#username').required = accountType === 'xtream'; $('#password').required = accountType === 'xtream';
-  $('#playlist-url').disabled = accountType !== 'm3u';
+  $('#playlist-url').disabled = accountType !== 'm3u-url';
+  $('#playlist-file').disabled = accountType !== 'm3u-file';
   for (const id of ['server-url', 'username', 'password']) $(`#${id}`).disabled = accountType !== 'xtream';
   $('#storage-note').textContent = window.desktop?.saveState ? 'Las cuentas se guardan cifradas en este equipo con la protección de Windows.' : 'Modo navegador: las cuentas y contraseñas se guardan en este navegador sin cifrado. Usa la aplicación de Windows si necesitas almacenamiento protegido.';
   $('#account-name').focus();
@@ -53,14 +57,14 @@ $('#account-form').onsubmit = async event => {
   event.preventDefault(); if (busy || !accountType) return;
   busy = true; $('#account-submit').disabled = true; $('#account-submit').textContent = 'Conectando…'; $('#account-error').textContent = '';
   try {
-    const type = accountType;
+    const type = accountType === 'xtream' ? 'xtream' : 'm3u';
     let items, config, warnings = [];
     if (type === 'xtream') {
       config = { server: normalizeServer($('#server-url').value), username: $('#username').value.trim(), password: $('#password').value };
       if (!config.username || !config.password) throw new Error('Completa el usuario y la contraseña.');
       ({ items, warnings } = await loadXtream(config, requestJson));
     } else {
-      const file = $('#playlist-file').files[0], url = $('#playlist-url').value.trim();
+      const file = accountType === 'm3u-file' ? $('#playlist-file').files[0] : null, url = accountType === 'm3u-url' ? $('#playlist-url').value.trim() : '';
       if (!file && !url) throw new Error('Selecciona un archivo o introduce el enlace M3U.');
       if (url && !httpUrl(url)) throw new Error('Usa un enlace HTTP o HTTPS válido.');
       if (file?.size > 20 * 1024 * 1024) throw new Error('El archivo supera el límite de 20 MB.');
@@ -70,7 +74,7 @@ $('#account-form').onsubmit = async event => {
     }
     const added = { id: crypto.randomUUID(), name: $('#account-name').value.trim() || (type === 'xtream' ? 'Mi cuenta Xtream' : $('#playlist-file').files[0]?.name || 'Mi lista M3U'), type, config, items, updatedAt: Date.now() };
     await commit({ ...state, accounts: [...state.accounts, added], activeId: added.id });
-    stopPlayback(); view = 'home'; resetFilters(); dialog.close();
+    stopPlayback(); sessionAccountId = added.id; view = 'home'; resetFilters(); dialog.close();
     $('#account-form').reset();
     notify(warnings.length ? `Cuenta conectada. No se pudo cargar: ${warnings.map(k => sections[k]).join(', ')}. Puedes actualizarla más tarde.` : 'Cuenta conectada. Elige TV en vivo, cine o series para empezar.');
     render();
@@ -80,27 +84,33 @@ $('#account-form').onsubmit = async event => {
 for (const button of document.querySelectorAll('[data-view]')) button.onclick = () => setView(button.dataset.view);
 for (const button of document.querySelectorAll('[data-open]')) button.onclick = () => { if (!account()) openAccount(); else setView(button.dataset.open); };
 $('.brand').onclick = event => { event.preventDefault(); setView('home'); };
-$('#account-select').onchange = async event => {
-  const id = event.target.value;
-  if (busy) { render(); return; }
+async function enterAccount(id) {
+  if (busy || !state.accounts.some(a => a.id === id)) return;
   busy = true;
-  try { await commit({ ...state, activeId: id }); stopPlayback(); episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); }
-  catch (error) { notify(friendlyError(error)); render(); }
+  try {
+    await commit({ ...state, activeId: id });
+    stopPlayback(); sessionAccountId = id; view = 'home'; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
+  } catch (error) { notify(friendlyError(error)); render(); }
   finally { busy = false; }
+}
+$('#change-account').onclick = () => {
+  if (busy) return;
+  stopPlayback(); sessionAccountId = null; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
 };
+$('#hero-add').onclick = () => setView('live');
 $('#search').oninput = () => { limit = 120; renderItems(); };
 $('#clear-category').onclick = () => { group = ''; render(); };
 $('#load-more').onclick = () => { limit += 120; renderItems(); };
 function sectionItems() { const selected = favorites(); return (account()?.items || []).filter(item => view === 'favorites' ? selected.has(item.id) : item.kind === view); }
 function render() {
   const active = account();
+  $('.app').hidden = !active; $('#account-picker').hidden = !!active;
+  $('#picker-title').textContent = state.accounts.length ? '¿Qué cuenta vas a usar?' : 'Tu universo empieza aquí.';
+  $('#picker-description').textContent = state.accounts.length ? 'Selecciona una cuenta guardada o agrega una nueva.' : 'Agrega tu primera cuenta para comenzar.';
+  $('#active-account-name').textContent = active?.name || '';
   $('#home-view').hidden = view !== 'home'; $('#library-view').hidden = view === 'home';
   $('#page-label').textContent = view === 'home' ? 'INICIO' : view === 'favorites' ? 'FAVORITOS' : sections[view].toUpperCase();
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  $('#account-select').replaceChildren();
-  for (const a of state.accounts) { const option = node('option', '', a.name); option.value = a.id; $('#account-select').append(option); }
-  if (!state.accounts.length) { const option = node('option', '', 'Sin cuenta conectada'); option.value = ''; $('#account-select').append(option); }
-  $('#account-select').value = state.activeId || ''; $('#account-select').disabled = !state.accounts.length;
   for (const kind of Object.keys(sections)) {
     const count = (active?.items || []).filter(i => i.kind === kind).length;
     $(`#count-${kind}`).textContent = count;
@@ -124,11 +134,11 @@ function render() {
 }
 function renderAccounts() {
   $('#accounts-list').replaceChildren();
-  if (!state.accounts.length) { $('#accounts-list').append(node('p', 'muted', 'Sin cuentas todavía. Agrega una conexión Xtream Codes o una lista M3U.')); return; }
+  if (!state.accounts.length) return;
   for (const a of state.accounts) {
-    const row = node('div', `account-row${a.id === state.activeId ? ' connected' : ''}`);
-    const info = node('div', 'account-info'); info.append(node('strong', '', a.name), node('small', '', `${a.type === 'xtream' ? 'XTREAM CODES' : 'M3U'} · ${a.items.length} títulos${a.id === state.activeId ? ' · ACTIVA' : ''}`));
-    const select = node('button', 'secondary', a.id === state.activeId ? 'Conectada' : 'Usar cuenta'); select.disabled = a.id === state.activeId; select.onclick = async () => { $('#account-select').value = a.id; $('#account-select').dispatchEvent(new Event('change')); };
+    const row = node('div', 'account-row');
+    const info = node('div', 'account-info'); info.append(node('strong', '', a.name), node('small', '', `${a.type === 'xtream' ? 'XTREAM CODES' : 'M3U'} · ${a.items.length} títulos`));
+    const select = node('button', 'primary account-enter', 'Entrar →'); select.setAttribute('aria-label', `Entrar a ${a.name}`); select.onclick = () => enterAccount(a.id);
     const refresh = node('button', 'text-button', 'Actualizar'); refresh.disabled = a.type === 'm3u' && !a.config.url; refresh.title = refresh.disabled ? 'Vuelve a agregar el archivo local para actualizarlo.' : 'Actualizar catálogo'; refresh.onclick = () => refreshAccount(a.id);
     const remove = node('button', 'icon-button', '×'); remove.setAttribute('aria-label', `Eliminar cuenta ${a.name}`); remove.onclick = () => { deleteId = a.id; $('#delete-error').textContent = ''; $('#delete-dialog').showModal(); };
     row.append(info, select, refresh, remove); $('#accounts-list').append(row);
@@ -152,7 +162,7 @@ $('#confirm-delete').onclick = async () => {
   try {
     const accounts = state.accounts.filter(a => a.id !== deleteId), nextFavorites = { ...state.favorites }; delete nextFavorites[deleteId];
     await commit({ ...state, accounts, activeId: state.activeId === deleteId ? accounts[0]?.id || null : state.activeId, favorites: nextFavorites });
-    stopPlayback(); resetFilters(); $('#delete-dialog').close(); render();
+    stopPlayback(); sessionAccountId = null; resetFilters(); $('#delete-dialog').close(); render();
   } catch (error) { $('#delete-error').textContent = friendlyError(error); } finally { busy = false; }
 };
 function renderItems() {
@@ -171,7 +181,7 @@ function renderItems() {
     star.onclick = async () => {
       if (busy) return; busy = true;
       const next = favorites(); next.has(item.id) ? next.delete(item.id) : next.add(item.id);
-      try { await commit({ ...state, favorites: { ...state.favorites, [state.activeId]: [...next] } }); render(); }
+      try { await commit({ ...state, favorites: { ...state.favorites, [sessionAccountId]: [...next] } }); render(); }
       catch (error) { notify(friendlyError(error)); } finally { busy = false; }
     };
     card.append(play, star); $('#channels').append(card);
@@ -186,7 +196,7 @@ async function openSeries(item) {
   $('#series-name').textContent = item.name; $('#series-status').textContent = 'Cargando temporadas y episodios…'; $('#season-field').hidden = true; $('#episodes').replaceChildren(); $('#series-dialog').showModal();
   try {
     const loaded = await loadEpisodes(a.config, item.streamId, requestJson);
-    if (version !== episodeVersion || a.id !== state.activeId) return;
+    if (version !== episodeVersion || a.id !== sessionAccountId) return;
     episodes = loaded; const seasons = [...new Set(episodes.map(e => e.season))]; $('#season-select').replaceChildren();
     for (const season of seasons) { const option = node('option', '', `Temporada ${season}`); option.value = season; $('#season-select').append(option); }
     $('#season-field').hidden = !seasons.length; $('#series-status').textContent = episodes.length ? `${episodes.length} episodios disponibles` : 'Esta serie todavía no tiene episodios disponibles.'; renderEpisodes();

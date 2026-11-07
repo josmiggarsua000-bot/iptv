@@ -4,10 +4,15 @@ Reproductor de escritorio para Windows 11 x64, con interfaz en español y diseñ
 
 ## Empezar
 
-En la pantalla principal pulsa **Agregar cuenta** y elige:
+Al abrir el programa aparece el selector de cuentas. Si todavía no hay ninguna, solo se muestra **Agregar cuenta**. Las cuentas guardadas se conservan al cerrar; en cada inicio debes seleccionar **Entrar** en la cuenta que quieras usar. TV, cine y series se muestran únicamente dentro de esa cuenta. **Cambiar cuenta** vuelve al selector y detiene la reproducción.
+
+Pulsa **Agregar cuenta** y elige:
 
 - **Xtream Codes**: introduce el servidor HTTP/HTTPS (con puerto si lo requiere), usuario y contraseña del proveedor. Se cargan TV, cine y series por separado. En series puedes elegir temporada y episodio.
-- **Lista M3U**: importa un archivo o introduce una URL. Cine y series se identifican por las categorías (`Cine`, `Películas`, `Movies`, `VOD`, `Series`, etc.) o rutas `/movie/` y `/series/`. Sin esos datos aparecen en TV en vivo; no se inventa un catálogo. Las series M3U se reproducen como entradas individuales.
+- **Enlace M3U**: introduce una URL de tu proveedor.
+- **Archivo M3U**: selecciona un archivo de tu equipo.
+
+En las listas M3U, cine y series se identifican por las categorías (`Cine`, `Películas`, `Movies`, `VOD`, `Series`, etc.) o rutas `/movie/` y `/series/`. Sin esos datos aparecen en TV en vivo; no se inventa un catálogo. Las series M3U se reproducen como entradas individuales.
 
 Puedes guardar varias cuentas, cambiar entre ellas, actualizar catálogos remotos y eliminar cuentas. Las listas de archivo se actualizan agregando el archivo nuevo. Los favoritos pertenecen a cada cuenta. La lista y favoritos de v0.1 se migran a una cuenta M3U al abrir la nueva versión; el almacenamiento anterior solo se elimina tras un guardado correcto.
 

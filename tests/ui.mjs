@@ -20,6 +20,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:5179');
   await mkdir('artifacts', { recursive: true });
+  assert.equal(await page.locator('.app').isVisible(), false);
+  assert.equal(await page.locator('#account-picker button:visible').count(), 1);
   await page.screenshot({ path: 'artifacts/inicio.png', fullPage: true });
   // Produce a real local media fixture without depending on an external channel.
   const media = await page.evaluate(async () => {
@@ -67,17 +69,19 @@ try {
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const port = fixture.address().port;
   const addM3u = async (name, text) => {
-    await page.locator('#add-account').click();
-    await page.locator('[data-type="m3u"]').click();
+    if (await page.locator('.app').isVisible()) await page.locator('#change-account').click();
+    await page.locator('#picker-add').click();
+    await page.locator('[data-type="m3u-file"]').click();
     await page.locator('#account-name').fill(name);
     await page.locator('#playlist-file').setInputFiles({ name: 'Prueba.m3u', mimeType: 'text/plain', buffer: Buffer.from(text) });
     await page.locator('#account-submit').click();
     await page.waitForSelector('#account-dialog', { state: 'hidden' });
   };
   const goto = kind => page.locator(`[data-view="${kind}"]`).click();
-  await page.locator('#add-account').click();
+  if (await page.locator('.app').isVisible()) await page.locator('#change-account').click();
+  await page.locator('#picker-add').click();
   assert.equal(await page.locator('#account-fields').isVisible(), false);
-  await page.locator('[data-type="m3u"]').click();
+  await page.locator('[data-type="m3u-file"]').click();
   await page.locator('#playlist-file').setInputFiles({ name: 'invalid.m3u', mimeType: 'text/plain', buffer: Buffer.from('invalid') });
   await page.locator('#account-submit').click();
   await page.waitForFunction(() => document.querySelector('#account-error').textContent.includes('válida'));
@@ -93,6 +97,9 @@ try {
   await goto('favorites');
   assert.equal(await page.locator('.content-card').count(), 1);
   await page.reload();
+  assert.equal(await page.locator('.app').isVisible(), false);
+  assert.equal(await page.locator('#account-picker').isVisible(), true);
+  await page.getByRole('button', { name: 'Entrar a Mi cuenta M3U', exact: true }).click();
   await goto('favorites');
   assert.equal(await page.locator('.content-card').count(), 1);
   await goto('live');
@@ -112,31 +119,34 @@ try {
   await goto('series');
   assert.equal(await page.locator('.content-card').count(), 1);
   // A second account must not replace the first or share its favorites.
-  await page.locator('#add-account').click();
-  await page.locator('[data-type="m3u"]').click();
+  if (await page.locator('.app').isVisible()) await page.locator('#change-account').click();
+  await page.locator('#picker-add').click();
+  await page.locator('[data-type="m3u-file"]').click();
+  await page.locator('[data-type="m3u-url"]').click();
   await page.locator('#playlist-url').fill(`http://127.0.0.1:${port}/playlist.m3u`);
   await page.locator('#account-name').fill('Cuenta por URL');
   await page.locator('#account-submit').click();
   await page.waitForSelector('#account-dialog', { state: 'hidden' });
-  assert.equal(await page.locator('#account-select option').count(), 2);
+  assert.equal(await page.locator('.account-row').count(), 2);
   assert.equal(await page.locator('#count-favorites').textContent(), '0');
-  const options = await page.locator('#account-select option').evaluateAll(elements => elements.map(el => el.value));
-  await page.locator('#account-select').selectOption(options[0]);
+  await page.locator('#change-account').click();
+  await page.getByRole('button', { name: 'Entrar a Mi cuenta M3U', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#count-favorites').textContent === '1');
   // A real HTTP Xtream fixture serves separate catalogs and on-demand episodes.
-  await page.locator('#add-account').click();
+  if (await page.locator('.app').isVisible()) await page.locator('#change-account').click();
+  await page.locator('#picker-add').click();
   await page.locator('[data-type="xtream"]').click();
   await page.locator('#server-url').fill(`http://127.0.0.1:${port}`);
   await page.locator('#username').fill('demo +&');
   await page.locator('#password').fill('bad');
   await page.locator('#account-submit').click();
   await page.waitForFunction(() => document.querySelector('#account-error').textContent.includes('rechazó'));
-  assert.equal(await page.locator('#account-select option').count(), 2);
+  assert.equal(await page.locator('.account-row').count(), 2);
   await page.locator('#password').fill('test/?!');
   await page.locator('#account-name').fill('Xtream de prueba');
   await page.locator('#account-submit').click();
   await page.waitForSelector('#account-dialog', { state: 'hidden' });
-  assert.equal(await page.locator('#account-select option').count(), 3);
+  assert.equal(await page.locator('.account-row').count(), 3);
   assert.equal(await page.locator('#count-live').textContent(), '1');
   assert.equal(await page.locator('#count-movie').textContent(), '1');
   assert.equal(await page.locator('#count-series').textContent(), '1');
@@ -155,11 +165,14 @@ try {
   assert.equal(await page.locator('#current-name').textContent(), 'Episodio dos');
   await page.screenshot({ path: 'artifacts/cyberpunk-series.png', fullPage: true });
   await page.reload();
+  assert.equal(await page.locator('.app').isVisible(), false);
+  await page.getByRole('button', { name: 'Entrar a Xtream de prueba', exact: true }).click();
   assert.match(await page.locator('#home-account').textContent(), /Xtream de prueba/);
+  await page.locator('#change-account').click();
   await page.getByRole('button', { name: 'Eliminar cuenta Xtream de prueba', exact: true }).click();
   await page.locator('#confirm-delete').click();
   await page.waitForSelector('#delete-dialog', { state: 'hidden' });
-  assert.equal(await page.locator('#account-select option').count(), 2);
+  assert.equal(await page.locator('.account-row').count(), 2);
   // Existing users keep their previous M3U library and favorites.
   const legacy = await browser.newPage();
   await legacy.goto('http://127.0.0.1:5179');
@@ -167,6 +180,8 @@ try {
     localStorage.setItem('nexo.library.v1', JSON.stringify({ name: 'Cuenta anterior', channels: [{ id: `http://127.0.0.1:${port}/video.webm`, url: `http://127.0.0.1:${port}/video.webm`, name: 'Anterior', group: 'Noticias' }], favorites: [`http://127.0.0.1:${port}/video.webm`] }));
   }, port);
   await legacy.reload();
+  assert.equal(await legacy.locator('.app').isVisible(), false);
+  await legacy.getByRole('button', { name: 'Entrar a Cuenta anterior', exact: true }).click();
   assert.match(await legacy.locator('#home-account').textContent(), /Cuenta anterior/);
   assert.equal(await legacy.locator('#count-favorites').textContent(), '1');
   await legacy.close();
@@ -179,7 +194,7 @@ try {
     console.log('HLS: manifiesto y segmentos H.264 reproducidos: OK');
   }
   await page.setViewportSize({ width: 1000, height: 700 });
-  await goto('home');
+  await page.locator('#change-account').click();
   await page.screenshot({ path: 'artifacts/cyberpunk-1000px.png', fullPage: true });
   assert.deepEqual(errors, []);
   console.log('UI: cuentas M3U/URL/Xtream, autenticación, TV/cine/series, temporadas, reproducción, favoritos, cambio/eliminación de cuenta, persistencia y migración: OK');

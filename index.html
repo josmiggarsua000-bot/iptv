@@ -6,7 +6,11 @@
 <title>Nexo IPTV · Neon edition</title>
 </head>
 <body>
-<div class="app">
+<section id="account-picker" class="account-picker">
+  <header class="picker-brand"><span class="brand-symbol">N</span><span>NEXO<small>NEON ENTERTAINMENT</small></span></header>
+  <div class="picker-content"><span class="kicker">TU ACCESO AL UNIVERSO NEXO</span><h1 id="picker-title">Tu universo empieza aquí.</h1><p id="picker-description" class="muted">Agrega tu primera cuenta para comenzar.</p><div id="accounts-list" class="picker-accounts"></div><button class="primary" id="picker-add">＋ Agregar cuenta</button><p id="picker-notice" class="notice" role="status" hidden></p></div>
+</section>
+<div class="app" hidden>
   <aside class="sidebar">
     <a class="brand" href="#" aria-label="Nexo inicio"><span class="brand-symbol">N</span><span>NEXO<small>NEON ENTERTAINMENT</small></span></a>
     <div class="side-label">CENTRO DE CONTROL</div>
@@ -18,20 +22,20 @@
       <button class="nav-item" data-view="favorites"><span>☆</span>Favoritos<b id="count-favorites">0</b></button>
     </nav>
     <div class="side-label category-label">FRECUENCIAS / CATEGORÍAS</div><div id="categories" class="categories"></div>
-    <div class="side-bottom"><span class="status-light"></span> NEON EDITION <small>Windows · v0.2.0</small></div>
+    <div class="side-bottom"><span class="status-light"></span> NEON EDITION <small>Windows · v0.2.1</small></div>
   </aside>
   <main>
-    <header class="topbar"><div class="breadcrumb">NEXO <span>/</span> <span id="page-label">INICIO</span></div><div class="account-controls"><label class="sr-only" for="account-select">Cuenta activa</label><select id="account-select"><option value="">Sin cuenta conectada</option></select><button class="primary" id="add-account">＋ Agregar cuenta</button></div></header>
+    <header class="topbar"><div class="breadcrumb">NEXO <span>/</span> <span id="page-label">INICIO</span></div><div class="account-controls"><span id="active-account-name" class="muted"></span><button class="secondary" id="change-account">⇄ Cambiar cuenta</button></div></header>
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="home-view">
-      <div class="hero"><div class="hero-copy"><span class="kicker">TU SEÑAL. TU UNIVERSO.</span><h1>ENTRA EN<br>OTRA <em>DIMENSIÓN.</em></h1><p>Televisión, cine y series. Conecta tu cuenta<br>y encuentra tu próxima obsesión.</p><div class="hero-actions"><button class="primary" id="hero-add">＋ Agregar cuenta</button><span class="hero-note">XTREAM CODES / M3U</span></div></div><div class="neon-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="neon-core">N<span>NEXO / SIGNAL 02</span></div><div class="art-caption">CONEXIÓN A TU ENTRETENIMIENTO</div></div><div class="hero-bottom"><span>01 — SIN LÍMITES DE PANTALLA</span><span class="cyan">● TU MUNDO, CONECTADO</span></div></div>
+      <div class="hero"><div class="hero-copy"><span class="kicker">TU SEÑAL. TU UNIVERSO.</span><h1>ENTRA EN<br>OTRA <em>DIMENSIÓN.</em></h1><p>Televisión, cine y series de tu cuenta.<br>Elige qué quieres ver y disfruta.</p><div class="hero-actions"><button class="primary" id="hero-add">Explorar TV en vivo →</button><span class="hero-note">XTREAM CODES / M3U</span></div></div><div class="neon-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="neon-core">N<span>NEXO / SIGNAL 02</span></div><div class="art-caption">CONEXIÓN A TU ENTRETENIMIENTO</div></div><div class="hero-bottom"><span>01 — SIN LÍMITES DE PANTALLA</span><span class="cyan">● TU MUNDO, CONECTADO</span></div></div>
       <div class="section-heading"><div><span class="kicker">ELIGE TU FRECUENCIA</span><h2>Todo tu contenido. Un solo lugar.</h2></div><span id="home-account" class="muted">Agrega una cuenta para empezar</span></div>
       <div class="portal-grid">
         <button class="portal live-portal" data-open="live"><span class="portal-top">01 <span>↗</span></span><span class="portal-icon">▣</span><strong>TV EN VIVO</strong><span>Conecta con lo que está pasando.</span><small id="portal-live">0 canales</small></button>
         <button class="portal movie-portal" data-open="movie"><span class="portal-top">02 <span>↗</span></span><span class="portal-icon">◈</span><strong>CINE</strong><span>Tu próxima gran historia.</span><small id="portal-movie">0 películas</small></button>
         <button class="portal series-portal" data-open="series"><span class="portal-top">03 <span>↗</span></span><span class="portal-icon">▤</span><strong>SERIES</strong><span>Un episodio más. Siempre.</span><small id="portal-series">0 series</small></button>
       </div>
-      <section class="accounts-panel"><div><span class="kicker">TUS CONEXIONES</span><h2>Mis cuentas</h2></div><div id="accounts-list"></div></section>
+
     </section>
     <section id="library-view" hidden>
       <div class="library-heading"><div><span class="kicker" id="library-kicker">TU BIBLIOTECA</span><h1 id="view-title">TV en vivo</h1><p id="list-name" class="muted"></p></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Buscar en tu universo…" aria-label="Buscar contenido" /></label></div>
@@ -43,10 +47,10 @@
   </main>
 </div>
 <dialog id="account-dialog"><form id="account-form"><div class="dialog-heading"><div><span class="kicker">NUEVA CONEXIÓN</span><h2>Agregar cuenta</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Cerrar">×</button></div><p class="muted">Elige cómo conectar el contenido de tu proveedor.</p>
-  <div class="connection-types" role="group" aria-label="Tipo de cuenta"><button type="button" data-type="xtream" class="connection-type" aria-pressed="false"><span>⌁</span><strong>Xtream Codes</strong><small>Servidor, usuario y contraseña</small></button><button type="button" data-type="m3u" class="connection-type" aria-pressed="false"><span>≡</span><strong>Lista M3U</strong><small>Enlace o archivo de tu equipo</small></button></div>
+  <div class="connection-types" role="group" aria-label="Tipo de cuenta"><button type="button" data-type="xtream" class="connection-type" aria-pressed="false"><span>⌁</span><strong>Xtream Codes</strong><small>Servidor, usuario y contraseña</small></button><button type="button" data-type="m3u-url" class="connection-type" aria-pressed="false"><span>↗</span><strong>Enlace M3U</strong><small>URL de tu proveedor</small></button><button type="button" data-type="m3u-file" class="connection-type" aria-pressed="false"><span>≡</span><strong>Archivo M3U</strong><small>Desde tu equipo</small></button></div>
   <div id="account-fields" hidden><label class="field">Nombre de la cuenta<input id="account-name" maxlength="80" placeholder="Mi cuenta" autocomplete="off" /></label>
     <div id="xtream-fields" hidden><label class="field">URL del servidor<input id="server-url" type="url" placeholder="https://proveedor.com:8080" autocomplete="off" /></label><div class="field-row"><label class="field">Usuario<input id="username" autocomplete="off" /></label><label class="field">Contraseña<input id="password" type="password" autocomplete="off" /></label></div></div>
-    <div id="m3u-fields" hidden><label class="field">Enlace M3U<input id="playlist-url" type="url" placeholder="https://proveedor.com/lista.m3u" /></label><div class="divider">O IMPORTA UN ARCHIVO</div><label class="file-picker">↥ Seleccionar archivo M3U<input id="playlist-file" type="file" accept=".m3u,.m3u8,text/plain,audio/x-mpegurl" /><span id="file-name">Ningún archivo seleccionado</span></label><p class="form-note">Cine y series se reconocen por las categorías o rutas de la lista. Si no hay esa información, los elementos aparecen en TV en vivo.</p></div>
+    <div id="m3u-fields" hidden><label class="field" id="m3u-url-field">Enlace M3U<input id="playlist-url" type="url" placeholder="https://proveedor.com/lista.m3u" /></label><label class="file-picker" id="m3u-file-field">↥ Seleccionar archivo M3U<input id="playlist-file" type="file" accept=".m3u,.m3u8,text/plain,audio/x-mpegurl" /><span id="file-name">Ningún archivo seleccionado</span></label><p class="form-note">Cine y series se reconocen por las categorías o rutas de la lista. Si no hay esa información, los elementos aparecen en TV en vivo.</p></div>
     <p id="storage-note" class="form-note"></p>
   </div><p id="account-error" class="error" role="alert"></p><div class="dialog-actions"><button type="button" id="cancel-account" class="secondary">Cancelar</button><button type="submit" class="primary" id="account-submit" disabled>Conectar cuenta →</button></div>
 </form></dialog>

@@ -46,3 +46,13 @@ export function filterChannels(channels, { search = '', group = '', favorites = 
   const term = normalize(search.trim());
   return channels.filter(channel => (!group || channel.group === group) && (!favorites || favorites.has(channel.id)) && normalize(channel.name).includes(term));
 }
+
+export function playlistEpgUrl(text, base) {
+  const header = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0];
+  const match = /(?:url-tvg|x-tvg-url)="([^"]+)"/i.exec(header);
+  for (const value of (match?.[1] || '').split(',')) {
+    const url = value.trim() && httpUrl(value.trim(), base);
+    if (url) return url;
+  }
+  return '';
+}

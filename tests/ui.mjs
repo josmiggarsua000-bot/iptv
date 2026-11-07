@@ -38,7 +38,8 @@ try {
   });
   const data = Buffer.from(media);
   const playlist = port => `#EXTM3U\n#EXTINF:-1 tvg-id="news" group-title="Noticias",Noticias Uno\nhttp://127.0.0.1:${port}/video.webm\n#EXTINF:-1 group-title="Música",Música Dos\nhttp://127.0.0.1:${port}/video.webm?second=1`;
-  let requests = 0, denyList = false;
+  let requests = 0, denyList = false, dtdRequests = 0;
+  const epgQueries = [];
   if (process.argv.includes('--hls')) {
     hlsDir = await mkdtemp(join(tmpdir(), 'nexo-hls-'));
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-t', '6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-threads', '2', '-g', '24', '-hls_time', '1', '-hls_list_size', '0', join(hlsDir, 'stream.m3u8')]);
@@ -54,11 +55,13 @@ try {
   fixture = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/epg.xml') {
+    if (url.pathname === '/epg.xml' || url.pathname === '/xmltv.php') {
+      epgQueries.push(url.searchParams.get('username'));
       const time = ms => new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0,14) + ' +0000';
       res.setHeader('Content-Type', 'application/xml');
-      res.end(`<tv><channel id="news"><display-name>Noticias Uno</display-name></channel><programme channel="news" start="${time(Date.now()-600000)}" stop="${time(Date.now()+1800000)}"><title>Programa de prueba</title><desc>Actualidad</desc></programme></tv>`);
+      res.end(`<?xml version="1.0"?><!DOCTYPE tv SYSTEM "xmltv.dtd"><tv><channel id="news"><display-name>Noticias Uno</display-name></channel><programme channel="news" start="${time(Date.now()-600000)}" stop="${time(Date.now()+1800000)}"><title>Programa de prueba</title><desc>Actualidad</desc></programme></tv>`);
     }
+    else if (url.pathname === '/xmltv.dtd') { dtdRequests++; res.end(''); }
     else if (hlsDir && /^\/dual[-\w]*\.(mp4|m3u8|ts|vtt)$/.test(url.pathname)) {
       res.setHeader('Content-Type', url.pathname.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : url.pathname.endsWith('.mp4') ? 'video/mp4' : url.pathname.endsWith('.vtt') ? 'text/vtt' : 'video/mp2t');
       res.end(await readFile(join(hlsDir, url.pathname.slice(1))));
@@ -95,7 +98,11 @@ try {
     await page.locator('#account-submit').click();
     await page.waitForSelector('#account-dialog', { state: 'hidden' });
   };
-  const goto = kind => page.locator(`[data-view="${kind}"]`).click();
+  const goto = async kind => {
+    if (kind === 'home') { if (!(await page.locator('#home-view').isVisible())) await page.locator('[data-view="home"]').click(); return; }
+    if (!(await page.locator('#home-view').isVisible())) await page.locator('[data-view="home"]').click();
+    await page.locator(`[data-open="${kind}"]`).click();
+  };
   if (await page.locator('.app').isVisible()) await page.locator('#change-account').click();
   await page.locator('#picker-add').click();
   assert.equal(await page.locator('#account-fields').isVisible(), false);
@@ -106,9 +113,13 @@ try {
   await page.locator('#cancel-account').click();
   await addM3u('Mi cuenta M3U', playlist(port) + `\n#EXTINF:-1 group-title="Películas",Cine de prueba\nhttp://127.0.0.1:${port}/video.webm?movie=1\n#EXTINF:-1 group-title="Series",Serie M3U\nhttp://127.0.0.1:${port}/video.webm?series=1`);
   assert.equal(await page.locator('#count-live').textContent(), '2');
+  assert.equal(await page.locator('.sidebar').isVisible(), false);
+  assert.equal(await page.locator('.account-portals [data-open]').count(), 4);
   assert.equal(await page.locator('#count-movie').textContent(), '1');
   assert.equal(await page.locator('#count-series').textContent(), '1');
   await goto('live');
+  assert.equal(await page.locator('.sidebar').isVisible(), true);
+  assert.equal(await page.locator('.category').filter({ hasText: 'Noticias' }).isVisible(), true);
   assert.equal(await page.locator('.content-card').count(), 2);
   await page.getByRole('button', { name: 'Favorito: Noticias Uno', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#count-favorites').textContent === '1');
@@ -137,12 +148,17 @@ try {
   await page.locator('#subtitle-track').selectOption('');
   await page.waitForFunction(() => [...document.querySelector('#video').textTracks].every(t => t.mode !== 'showing'));
   await page.locator('#epg-settings').click();
+  await page.locator('#epg-mode').selectOption('manual');
   await page.locator('#epg-url').fill(`http://127.0.0.1:${port}/epg.xml`);
   await page.locator('#epg-save').click();
   await page.waitForSelector('#epg-dialog', { state: 'hidden' });
   await goto('epg');
   await page.waitForSelector('.epg-program');
   assert.match(await page.locator('#epg-programs').textContent(), /Programa de prueba/);
+  assert.equal(dtdRequests, 0);
+  await page.locator('.category').filter({ hasText: 'Música' }).click();
+  assert.doesNotMatch(await page.locator('#epg-programs').textContent(), /Noticias Uno/);
+  await page.locator('.category').filter({ hasText: 'Todas las categorías' }).click();
   await page.screenshot({ path: 'artifacts/epg.png', fullPage: true });
   await goto('multi');
   for (let i = 1; i <= 4; i++) {
@@ -170,6 +186,24 @@ try {
   await page.waitForSelector('#account-dialog', { state: 'hidden' });
   assert.equal(await page.locator('.account-row').count(), 2);
   assert.equal(await page.locator('#count-favorites').textContent(), '0');
+  await goto('epg');
+  await page.waitForSelector('.epg-program');
+  assert.ok(epgQueries.includes('fixture'));
+  assert.equal(dtdRequests, 0);
+  await page.locator('#epg-settings').click();
+  await page.locator('#epg-mode').selectOption('off');
+  await page.locator('#epg-save').click();
+  await page.waitForSelector('#epg-dialog', { state: 'hidden' });
+  const offRequests = epgQueries.length;
+  await goto('home'); await goto('epg');
+  assert.match(await page.locator('#epg-status').textContent(), /desactivada/);
+  assert.equal(epgQueries.length, offRequests);
+  await page.locator('#epg-settings').click();
+  await page.locator('#epg-mode').selectOption('auto');
+  await page.locator('#epg-save').click();
+  await page.waitForSelector('#epg-dialog', { state: 'hidden' });
+  await page.waitForSelector('.epg-program');
+  await goto('home');
   const beforeRefresh = requests;
   await page.locator('#refresh-account').click();
   await page.waitForFunction(() => document.querySelector('#notice').textContent === 'Catálogo actualizado.');
@@ -217,6 +251,10 @@ try {
   assert.equal(await page.locator('#count-movie').textContent(), '1');
   assert.equal(await page.locator('#count-series').textContent(), '1');
   assert.match(await page.locator('#account-expiration').textContent(), /2030/);
+  await goto('epg');
+  await page.waitForSelector('.epg-row');
+  assert.ok(epgQueries.includes('demo +&'));
+  await goto('home');
   await page.screenshot({ path: 'artifacts/cyberpunk-inicio.png', fullPage: true });
   await goto('movie');
   await page.getByRole('button', { name: 'Reproducir Cine Xtream', exact: true }).click();

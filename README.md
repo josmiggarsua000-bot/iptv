@@ -4,7 +4,7 @@ Reproductor de escritorio para Windows 11 x64, con interfaz en español y diseñ
 
 ## Empezar
 
-Al abrir el programa aparece el selector de cuentas. Si todavía no hay ninguna, solo se muestra **Agregar cuenta**. Las cuentas guardadas se conservan al cerrar; en cada inicio debes seleccionar **Entrar** en la cuenta que quieras usar. TV, cine y series se muestran únicamente dentro de esa cuenta. **Cambiar cuenta** vuelve al selector y detiene la reproducción.
+Al abrir el programa aparece el selector de cuentas. Si todavía no hay ninguna, solo se muestra **Agregar cuenta**. Las cuentas guardadas se conservan al cerrar; en cada inicio debes seleccionar **Entrar** en la cuenta que quieras usar. Dentro de la cuenta aparecen cuatro cuadros centrales: **TV en vivo**, **Cine**, **Series** y **Guía EPG**. La barra lateral y sus categorías se muestran al elegir una sección. Desde **Inicio** puedes volver a los cuatro cuadros. **Cambiar cuenta** vuelve al selector y detiene la reproducción.
 
 Pulsa **Agregar cuenta** y elige:
 
@@ -20,7 +20,11 @@ No incluye canales ni suscripciones, DRM ni reproducción RTSP/UDP. Compatible c
 
 ## EPG, actualización y vencimiento
 
-Dentro de una cuenta, pulsa **Configurar EPG** e introduce una URL XMLTV o XMLTV.GZ. En Xtream puedes usar **Usar EPG de mi cuenta Xtream**. Se guarda por cuenta y se puede quitar dejando la URL vacía. La sección **Guía EPG** asocia programas por `tvg-id`/`epg_channel_id`, o nombre como alternativa. Presenta programación actual y próxima en horario local, hasta 48 horas; conserva una ventana de 6 horas anteriores. Se pagina por 120 canales y la guía se conserva en memoria durante 30 minutos. La EPG es opcional.
+Al abrir **Guía EPG**, la aplicación intenta detectar su dirección usando la cuenta Xtream o los parámetros `username` y `password` del enlace M3U para construir `xmltv.php` en el mismo servidor y puerto. También reconoce `url-tvg`/`x-tvg-url` de una lista y rutas de stream Xtream en archivos locales. No se escanean servidores ni se necesita volver a escribir las credenciales. Una dirección inferida no garantiza que el proveedor tenga EPG disponible.
+
+En **Configurar EPG** puedes elegir **Detectar automáticamente**, **Enlace manual** o **Desactivada**. Los enlaces manuales guardados en versiones anteriores siguen teniendo prioridad. Se aceptan XMLTV/XMLTV.GZ con una declaración externa estándar `<!DOCTYPE tv SYSTEM "xmltv.dtd">`: se elimina la declaración antes de analizar el XML, sin descargar DTD ni resolver entidades externas. Las declaraciones internas de entidades no son compatibles.
+
+La guía se asocia por `tvg-id`/`epg_channel_id`, o nombre como alternativa, y se filtra con las categorías de TV a la izquierda. Presenta programación actual/próxima en horario local, hasta 48 horas, y conserva una ventana de 6 horas anteriores. Se pagina por 120 canales y se conserva en memoria durante 30 minutos. La EPG sigue siendo opcional.
 
 **Refresh** actualiza el catálogo sin borrar el anterior si la descarga falla. **Actualizar listas al entrar** está activado por defecto para fuentes remotas y puede desactivarse por cuenta desde Inicio. Los archivos locales no se pueden descargar otra vez: Refresh pide seleccionar su archivo actualizado. El botón también recarga una EPG configurada.
 

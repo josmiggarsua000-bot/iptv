@@ -45,7 +45,7 @@ app.once('browser-window-created', (_, window) => {
       await wait("document.querySelector('.account-enter')");
       await window.webContents.executeJavaScript("document.querySelector('.account-enter').click()", true);
       await wait("!document.querySelector('.app').hidden");
-      await window.webContents.executeJavaScript("document.querySelector('[data-view=movie]').click(); document.querySelector('#video').muted = true; document.querySelector('.content-play').click()", true);
+      await window.webContents.executeJavaScript("document.querySelector('[data-open=movie]').click(); document.querySelector('#video').muted = true; document.querySelector('.content-play').click()", true);
       await wait("document.querySelector('#video').currentTime > 0.2 && document.querySelector('#audio-track').options.length === 2");
       await window.webContents.executeJavaScript("const select=document.querySelector('#audio-track'); select.value='1'; select.dispatchEvent(new Event('change'))");
       await wait("document.querySelector('#video').audioTracks[1].enabled");

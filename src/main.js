@@ -1,7 +1,8 @@
 import { createPlayer } from './player.js';
 import { setupEpg } from './epg-ui.js';
+import { resolveEpgUrl, epgMode } from './epg.js';
 import { setupMultiscreen } from './multiscreen.js';
-import { parseM3U, filterChannels, httpUrl } from './playlist.js';
+import { parseM3U, playlistEpgUrl, filterChannels, httpUrl } from './playlist.js';
 import { classifyM3U, sections } from './library.js';
 import { loadXtream, loadEpisodes, normalizeServer } from './xtream.js';
 import { requestText, requestJson, friendlyError } from './network.js';
@@ -15,7 +16,7 @@ let view = 'home', group = '', limit = 120, accountType = null, busy = false, st
 let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null;
 const video = $('#video'), dialog = $('#account-dialog');
 const account = () => state.accounts.find(a => a.id === sessionAccountId);
-const epg = setupEpg({ getAccount: account, updateConfig, play: item => { setView('live'); playItem(item); } });
+const epg = setupEpg({ getAccount: account, updateConfig, getCategory: () => group, play: item => { setView('live'); playItem(item); } });
 const multiscreen = setupMultiscreen(account);
 const favorites = () => new Set(state.favorites[sessionAccountId] || []);
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text != null) el.textContent = text; return el; }
@@ -74,13 +75,13 @@ $('#account-form').onsubmit = async event => {
       if (file?.size > 64 * 1024 * 1024) throw new Error('El archivo supera el límite de 64 MB.');
       const source = file ? { text: await file.text() } : await requestText(url);
       items = classifyM3U(parseM3U(source.text, source.url));
-      config = { url: url || '' };
+      config = { url: url || '', detectedEpgUrl: playlistEpgUrl(source.text, source.url) };
     }
     const added = { id: crypto.randomUUID(), name: $('#account-name').value.trim() || (type === 'xtream' ? 'Mi cuenta Xtream' : $('#playlist-file').files[0]?.name || 'Mi lista M3U'), type, config, accountInfo, items, updatedAt: Date.now() };
     await commit({ ...state, accounts: [...state.accounts, added], activeId: added.id });
     stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = added.id; view = 'home'; resetFilters(); dialog.close();
     $('#account-form').reset();
-    notify(warnings.length ? `Cuenta conectada. No se pudo cargar: ${warnings.map(k => sections[k]).join(', ')}. Puedes actualizarla más tarde.` : 'Cuenta conectada. Elige TV en vivo, cine o series para empezar.');
+    notify(warnings.length ? `Cuenta conectada. No se pudo cargar: ${warnings.map(k => sections[k]).join(', ')}. Puedes actualizarla más tarde.` : 'Cuenta conectada.');
     render();
   } catch (error) { $('#account-error').textContent = friendlyError(error); }
   finally { busy = false; $('#account-submit').disabled = false; $('#account-submit').textContent = 'Conectar cuenta →'; render(); }
@@ -103,13 +104,14 @@ $('#change-account').onclick = () => {
   if (busy) return;
   stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = null; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
 };
-$('#hero-add').onclick = () => setView('live');
 $('#search').oninput = () => { limit = 120; renderItems(); };
 $('#clear-category').onclick = () => { group = ''; render(); };
 $('#load-more').onclick = () => { limit += 120; renderItems(); };
-function sectionItems() { const selected = favorites(); return (account()?.items || []).filter(item => view === 'favorites' ? selected.has(item.id) : item.kind === view); }
+function sectionItems() { const selected = favorites(); return (account()?.items || []).filter(item => view === 'favorites' ? selected.has(item.id) : item.kind === (view === 'epg' ? 'live' : view)); }
 function render() {
   const active = account();
+  $('.app').classList.toggle('is-home', view === 'home');
+  $('#portal-epg').textContent = !resolveEpgUrl(active) ? 'EPG opcional · Configurar' : epgMode(active) === 'auto' ? 'Buscar EPG automáticamente' : 'Guía configurada';
   $('.app').hidden = !active; $('#account-picker').hidden = !!active;
   $('#picker-title').textContent = state.accounts.length ? '¿Qué cuenta vas a usar?' : 'Tu universo empieza aquí.';
   $('#picker-description').textContent = state.accounts.length ? 'Selecciona una cuenta guardada o agrega una nueva.' : 'Agrega tu primera cuenta para comenzar.';
@@ -137,8 +139,9 @@ function render() {
   $('#home-account').textContent = active ? `${active.name} / ${active.type === 'xtream' ? 'XTREAM CODES' : 'M3U'}` : 'Agrega una cuenta para empezar';
   renderAccounts();
   $('#categories').replaceChildren();
-  $('.category-label').hidden = !['live', 'movie', 'series', 'favorites'].includes(view);
+  $('.category-label').hidden = !['live', 'movie', 'series', 'favorites', 'epg'].includes(view);
   const groups = new Map(); sectionItems().forEach(i => groups.set(i.group, (groups.get(i.group) || 0) + 1));
+  if (groups.size) { const all = node('button', `category${!group ? ' active' : ''}`); all.textContent = 'Todas las categorías'; all.onclick = () => { group = ''; limit = 120; render(); }; $('#categories').append(all); }
   for (const [name, count] of groups) {
     const button = node('button', `category${group === name ? ' active' : ''}`);
     button.append(node('span', '', name), node('b', '', count)); button.onclick = () => { group = name; limit = 120; render(); };
@@ -147,6 +150,7 @@ function render() {
   $('#view-title').textContent = view === 'favorites' ? 'Favoritos' : sections[view] || 'Inicio';
   $('#list-name').textContent = active?.name || 'Sin cuenta conectada';
   renderItems();
+  if (view === 'epg') epg.render();
 }
 function renderAccounts() {
   $('#accounts-list').replaceChildren();
@@ -163,13 +167,13 @@ function renderAccounts() {
 async function refreshAccount(id) {
   if (busy) return; busy = true; notify('Actualizando el catálogo…');
   try {
-    const a = state.accounts.find(a => a.id === id); let items, warnings = [], accountInfo = a.accountInfo;
+    const a = state.accounts.find(a => a.id === id); let items, warnings = [], accountInfo = a.accountInfo, detectedEpgUrl = a.config.detectedEpgUrl;
     if (a.type === 'm3u' && !a.config.url) { notify('Selecciona el archivo M3U actualizado. Si cancelas, se conserva la lista actual.'); $('#local-refresh-file').click(); return; }
     if (a.type === 'xtream') ({ items, warnings, accountInfo } = await loadXtream(a.config, requestJson));
-    else { const source = await requestText(a.config.url); items = classifyM3U(parseM3U(source.text, source.url)); }
+    else { const source = await requestText(a.config.url); items = classifyM3U(parseM3U(source.text, source.url)); detectedEpgUrl = playlistEpgUrl(source.text, source.url); }
     // Keep existing sections when the provider temporarily fails to return them.
     if (warnings.length) items.push(...a.items.filter(i => warnings.includes(i.kind)));
-    await commit({ ...state, accounts: state.accounts.map(old => old.id === id ? { ...a, items, accountInfo, updatedAt: Date.now() } : old) });
+    await commit({ ...state, accounts: state.accounts.map(old => old.id === id ? { ...a, config: { ...a.config, detectedEpgUrl }, items, accountInfo, updatedAt: Date.now() } : old) });
     notify(warnings.length ? `Actualización parcial. Se conservó el catálogo anterior de: ${warnings.map(k => sections[k]).join(', ')}.` : 'Catálogo actualizado.'); render();
   } catch (error) { notify(`No se pudo actualizar. Se conserva tu catálogo anterior. ${friendlyError(error)}`); } finally { busy = false; render(); }
 }
@@ -277,15 +281,15 @@ $('#auto-refresh').onchange = async () => { try { await updateConfig({ refreshOn
 $('#refresh-account').onclick = async () => {
   const a = account(); if (!a) return;
   await refreshAccount(a.id);
-  if (a.config.epgUrl) await epg.load(true);
+  if (resolveEpgUrl(account())) await epg.load(true);
 };
 $('#local-refresh-file').onchange = async () => {
   const file = $('#local-refresh-file').files[0], a = account(); if (!file || !a || busy) return;
   busy = true;
   try {
     if (file.size > 64 * 1024 * 1024) throw new Error('El archivo supera 64 MB.');
-    const items = classifyM3U(parseM3U(await file.text()));
-    await commit({ ...state, accounts: state.accounts.map(old => old.id === a.id ? { ...old, items, updatedAt: Date.now() } : old) }); notify('Archivo actualizado. Se conservaron tus favoritos.'); render();
+    const text = await file.text(), items = classifyM3U(parseM3U(text)), detectedEpgUrl = playlistEpgUrl(text);
+    await commit({ ...state, accounts: state.accounts.map(old => old.id === a.id ? { ...old, config: { ...old.config, detectedEpgUrl }, items, updatedAt: Date.now() } : old) }); notify('Archivo actualizado. Se conservaron tus favoritos.'); render();
   } catch (error) { notify(friendlyError(error)); }
   finally { busy = false; $('#local-refresh-file').value = ''; render(); }
 };

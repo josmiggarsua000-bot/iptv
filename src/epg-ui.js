@@ -1,25 +1,31 @@
-import { parseXmltv, channelPrograms, xtreamEpgUrl } from './epg.js';
+import { parseXmltv, channelPrograms, discoverEpgUrl, resolveEpgUrl, epgMode } from './epg.js';
 import { httpUrl, filterChannels } from './playlist.js';
 import { requestText, friendlyError } from './network.js';
-export function setupEpg({ getAccount, updateConfig, play }) {
+export function setupEpg({ getAccount, updateConfig, getCategory = () => '', play }) {
   const $ = s => document.querySelector(s), cache = new Map();
   let generation = 0, limit = 120;
   const node = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
   function openSettings() {
     const a = getAccount(); if (!a) return;
-    $('#epg-url').value = a.config.epgUrl || ''; $('#epg-error').textContent = '';
-    $('#epg-xtream').hidden = a.type !== 'xtream'; $('#epg-dialog').showModal();
+    $('#epg-mode').value = epgMode(a); $('#epg-error').textContent = '';
+    settingsMode(); $('#epg-dialog').showModal();
   }
   $('#epg-settings').onclick = openSettings;
   $('#epg-close').onclick = () => $('#epg-dialog').close();
-  $('#epg-xtream').onclick = () => { $('#epg-url').value = xtreamEpgUrl(getAccount().config); };
+  function settingsMode() {
+    const a = getAccount(), mode = $('#epg-mode').value;
+    $('#epg-url').readOnly = mode !== 'manual'; $('#epg-url').required = mode === 'manual';
+    $('#epg-url').value = mode === 'auto' ? discoverEpgUrl(a) : mode === 'manual' ? a.config.epgUrl || '' : '';
+    $('#epg-detection').textContent = mode === 'off' ? 'La guía está desactivada para esta cuenta.' : mode === 'auto' ? ($('#epg-url').value ? 'Enlace XMLTV detectado a partir de tu cuenta. Se descargará al abrir la guía.' : 'No se encontró un enlace automático. Puedes introducirlo en modo manual.') : 'Se usará la dirección que introduzcas.';
+  }
+  $('#epg-mode').onchange = settingsMode;
   $('#epg-form').onsubmit = async event => {
     event.preventDefault(); $('#epg-save').disabled = true;
     try {
-      const address = $('#epg-url').value.trim();
-      if (address && !httpUrl(address)) throw new Error('Introduce una URL HTTP o HTTPS válida.');
+      const mode = $('#epg-mode').value, address = mode === 'manual' ? $('#epg-url').value.trim() : '';
+      if (mode === 'manual' && !httpUrl(address)) throw new Error('Introduce una URL HTTP o HTTPS válida.');
       const id = getAccount().id;
-      await updateConfig({ epgUrl: address }); cache.delete(id);
+      await updateConfig({ epgMode: mode, epgUrl: address }); cache.delete(id);
       $('#epg-dialog').close(); limit = 120; await load(true);
     } catch (error) { $('#epg-error').textContent = friendlyError(error); }
     finally { $('#epg-save').disabled = false; }
@@ -29,11 +35,11 @@ export function setupEpg({ getAccount, updateConfig, play }) {
   $('#epg-reload').onclick = () => load(true);
   function render() {
     const a = getAccount(); if (!a) return;
-    const entry = cache.get(a.id), epg = entry?.url === a.config.epgUrl ? entry.data : null;
+    const entry = cache.get(a.id), epg = entry?.url === resolveEpgUrl(a) ? entry.data : null;
     $('#epg-programs').replaceChildren();
-    const channels = filterChannels(a.items.filter(i => i.kind === 'live'), { search: $('#epg-search').value });
+    const channels = filterChannels(a.items.filter(i => i.kind === 'live'), { search: $('#epg-search').value, group: getCategory() });
     $('#epg-more').hidden = !epg || channels.length <= limit;
-    if (!a.config.epgUrl) { $('#epg-status').textContent = 'Esta cuenta no tiene EPG. Pulsa Configurar EPG para agregarla (opcional).'; return; }
+    if (!resolveEpgUrl(a)) { $('#epg-status').textContent = epgMode(a) === 'off' ? 'La EPG está desactivada. Puedes activarla en Configurar EPG.' : 'No se pudo detectar un enlace EPG. Puedes agregarlo en Configurar EPG.'; return; }
     if (!epg) return;
     const date = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
     $('#epg-status').textContent = `Última actualización: ${date.format(epg.loadedAt)} · ${channels.length} canales. Horario local.`;
@@ -55,7 +61,7 @@ export function setupEpg({ getAccount, updateConfig, play }) {
   }
   async function load(force = false) {
     const a = getAccount(); if (!a) return;
-    const version = ++generation, address = a.config.epgUrl;
+    const version = ++generation, address = resolveEpgUrl(a);
     if (!address) { render(); return; }
     const old = cache.get(a.id);
     if (!force && old?.url === address && Date.now() - old.data.loadedAt < 1800000) { render(); return; }

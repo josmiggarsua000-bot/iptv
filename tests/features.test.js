@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import { fetchText } from '../electron/download.cjs';
-import { xmltvTime, channelPrograms } from '../src/epg.js';
+import { xmltvTime, channelPrograms, safeXmltv, discoverEpgUrl, resolveEpgUrl } from '../src/epg.js';
 import { subtitleVtt } from '../src/subtitles.js';
-import { parseM3U } from '../src/playlist.js';
+import { parseM3U, playlistEpgUrl } from '../src/playlist.js';
 import { transport } from '../src/transport.js';
 import { loadXtream } from '../src/xtream.js';
 
@@ -59,4 +59,26 @@ test('Detecta HLS y TS sin exigir .m3u en la URL de la lista', () => {
   assert.equal(transport({ url: 'https://example.com/signal', kind: 'live' }, 'https://example.com/get.php?type=m3u_plus&output=ts'), 'mpegts');
   assert.equal(transport({ url: 'https://example.com/signal', kind: 'live' }, 'https://example.com/get.php?output=m3u8'), 'hls');
   assert.equal(transport({ url: 'https://example.com/film.mp4', kind: 'movie' }), 'native');
+});
+
+test('XMLTV permite DOCTYPE externo estándar sin cargarlo y rechaza entidades internas', () => {
+  assert.equal(safeXmltv('<!DOCTYPE tv SYSTEM "xmltv.dtd"><tv/>'), '<tv/>');
+  assert.equal(safeXmltv("<!DOCTYPE tv PUBLIC '-//XMLTV//DTD XMLTV//EN' 'https://example.com/xmltv.dtd'><tv/>"), '<tv/>');
+  assert.throws(() => safeXmltv('<!DOCTYPE tv [<!ENTITY x SYSTEM "file:///private">]><tv>&x;</tv>'), /entidades/);
+  const text = '<tv><desc><![CDATA[Texto literal <!DOCTYPE html>]]></desc></tv>';
+  assert.equal(safeXmltv(text), text);
+});
+test('EPG automático para Xtream, M3U remoto y archivos con rutas de stream', () => {
+  const account = { type: 'xtream', config: { server: 'https://example.com:2095', username: 'user+&', password: 'p/?!' }, items: [] };
+  let url = new URL(discoverEpgUrl(account));
+  assert.equal(url.pathname, '/xmltv.php'); assert.equal(url.searchParams.get('username'), 'user+&'); assert.equal(url.searchParams.get('password'), 'p/?!');
+  const m3u = { type: 'm3u', config: { url: 'https://example.com:2095/sub/get.php?username=fixture&password=fake&type=m3u_plus&output=ts' }, items: [] };
+  url = new URL(discoverEpgUrl(m3u)); assert.equal(url.pathname, '/sub/xmltv.php'); assert.equal(url.searchParams.get('username'), 'fixture');
+  const local = { type: 'm3u', config: {}, items: [{ url: 'https://example.com/live/user%2B/password%26/123.ts' }] };
+  url = new URL(discoverEpgUrl(local)); assert.equal(url.searchParams.get('username'), 'user+'); assert.equal(url.searchParams.get('password'), 'password&');
+  assert.equal(resolveEpgUrl({ ...account, config: { ...account.config, epgMode: 'off' } }), '');
+  assert.equal(resolveEpgUrl({ ...account, config: { ...account.config, epgUrl: 'https://example.com/custom.xml' } }), 'https://example.com/custom.xml');
+  assert.equal(discoverEpgUrl({ type: 'm3u', config: {}, items: [{ url: 'https://example.com/clip.mp4' }] }), '');
+  assert.equal(playlistEpgUrl('#EXTM3U x-tvg-url="https://example.com/epg.xml"'), 'https://example.com/epg.xml');
+  assert.equal(playlistEpgUrl('#EXTM3U url-tvg="epg.xml"', 'https://example.com/list.m3u'), 'https://example.com/epg.xml');
 });

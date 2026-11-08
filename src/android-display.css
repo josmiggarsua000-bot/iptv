@@ -1,0 +1,68 @@
+/* Display mode is explicit and independent from the TV box's reported density. */
+.android-setup-pending #account-picker,.android-setup-pending .app{visibility:hidden}
+.android-app .display-mode-dialog{width:min(660px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:clamp(18px,3vw,32px);text-align:center;border-radius:16px}
+.display-mode-dialog h2{font-size:clamp(22px,3vw,34px);margin:14px 0}.display-mode-dialog>p{font-size:14px;line-height:1.6;color:#c1b5d4}.display-mode-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px}.display-mode-options button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:160px;padding:18px;border-radius:12px;border:1px solid #9573b45c;background:radial-gradient(ellipse at center,#34204a,#130d20);color:white}.display-mode-options svg{width:64px;height:54px;fill:none;stroke:#54f5ff;stroke-width:3;filter:drop-shadow(0 0 7px #34f5ff55)}.display-mode-options button[data-display-mode=phone] svg{stroke:#d49aff}.display-mode-options strong{font-size:20px}.display-mode-options small{font-size:12px;line-height:1.5;color:#b7aaca}.display-mode-options button:is(:hover,:focus-visible){border-color:#34f5ff;box-shadow:0 0 24px #34f5ff30;outline:2px solid #34f5ff;outline-offset:3px}.display-mode-dialog #display-mode-error{font-size:12px;color:#ff9abc;margin-bottom:0}.android-app #android-display-settings{position:absolute;top:24px;right:24px;z-index:2;min-height:38px;font-size:12px}
+html.android-app.android-tv{--tv-safe:clamp(12px,2.5vw,48px);--tv-control:clamp(32px,6vh,52px);font-size:clamp(13px,1.25vw,20px)}
+html.android-app.android-tv body{overflow-x:hidden}
+html.android-app.android-tv .account-picker{padding:var(--tv-safe);min-height:100dvh;overflow-x:hidden}
+html.android-app.android-tv .picker-brand{padding:0;font-size:clamp(20px,2.6vw,32px);gap:12px}
+html.android-app.android-tv .picker-brand .pulso-logo{width:clamp(38px,5vw,65px);height:clamp(38px,5vw,65px)}
+html.android-app.android-tv .picker-content{width:min(1100px,100%);margin:clamp(18px,5vh,60px) auto 16px;padding:0}
+html.android-app.android-tv .picker-content h1{font-size:clamp(26px,3.8vw,48px);margin:12px 0}
+html.android-app.android-tv .picker-content>.muted{font-size:clamp(12px,1.3vw,17px);margin:0 0 24px}
+html.android-app.android-tv .picker-accounts{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+html.android-app.android-tv .picker-accounts .account-row{padding:20px;min-height:clamp(108px,20vh,146px)}
+html.android-app.android-tv .account-info>strong{font-size:clamp(16px,1.7vw,22px)}
+html.android-app.android-tv .account-expiration{font-size:clamp(11px,1vw,14px)}
+html.android-app.android-tv #android-display-settings{top:var(--tv-safe);right:var(--tv-safe);min-height:var(--tv-control)}
+html.android-app.android-tv .app{padding:var(--tv-safe);gap:clamp(10px,1.2vw,20px);grid-template-columns:clamp(140px,17vw,220px) minmax(0,1fr);min-height:100dvh}
+html.android-app.android-tv .app.is-home{display:block}
+html.android-app.android-tv main{padding:0;width:100%;max-width:1600px;min-width:0}
+html.android-app.android-tv .app.is-home main{display:flex;flex-direction:column;min-height:calc(100dvh - 2 * var(--tv-safe))}
+html.android-app.android-tv .topbar{height:auto;min-height:calc(var(--tv-control) + 12px);padding:6px 0;margin:0 0 10px}
+html.android-app.android-tv .account-controls{width:auto;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+html.android-app.android-tv .account-controls button{font-size:clamp(10px,1vw,14px);min-height:var(--tv-control);padding:8px 12px}
+html.android-app.android-tv #active-account-name{display:none}
+html.android-app.android-tv .app.is-home #home-view{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:clamp(8px,1.6vh,20px)}
+html.android-app.android-tv .home-welcome{padding:0;text-align:center}
+html.android-app.android-tv .home-welcome h1{font-size:clamp(24px,3.8vh,42px);margin:5px 0}
+html.android-app.android-tv .home-welcome p{font-size:clamp(11px,1vw,14px);margin:0}
+html.android-app.android-tv .home-welcome .kicker{font-size:clamp(8px,.8vw,11px)}
+html.android-app.android-tv .account-portals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(8px,1.2vw,20px);margin:0;width:100%;max-width:none;overflow:visible;padding:0}
+html.android-app.android-tv .account-portals .portal{height:clamp(150px,32vh,340px);min-height:0;min-width:0;aspect-ratio:auto;padding:clamp(12px,1.4vw,22px)}
+html.android-app.android-tv .account-portals .portal strong{font-size:clamp(13px,1.65vw,24px);letter-spacing:.4px;white-space:nowrap}
+html.android-app.android-tv .account-portals .portal>span:not(.portal-top):not(.portal-icon){display:none}
+html.android-app.android-tv .account-portals .portal small{font-size:clamp(8px,.85vw,12px);margin-top:10px;letter-spacing:.6px}
+html.android-app.android-tv .account-portals .portal-top{top:10px;left:12px;right:12px}
+html.android-app.android-tv .home-shortcuts{gap:10px}
+html.android-app.android-tv .home-shortcuts button{min-height:var(--tv-control);font-size:clamp(10px,1vw,14px);padding:8px 14px}
+html.android-app.android-tv .app.is-home .account-summary{margin:0;width:100%;max-width:none;padding:8px 14px;gap:10px 18px;flex-wrap:wrap;font-size:clamp(10px,1vw,14px)}
+html.android-app.android-tv .account-summary p{margin:0}
+html.android-app.android-tv .app.is-home #catalog-note{display:none}
+html.android-app.android-tv .notice{padding:10px 14px;font-size:clamp(10px,1vw,14px);margin:0 0 12px}
+html.android-app.android-tv footer{padding:10px 0 0;margin-top:10px;font-size:clamp(7px,.7vw,10px)}
+html.android-app.android-tv .sidebar{display:flex;flex-direction:column;position:sticky;top:var(--tv-safe);height:calc(100dvh - 2 * var(--tv-safe));padding:14px 10px;min-width:0}
+html.android-app.android-tv .sidebar .brand{display:flex;margin:0 0 22px;gap:8px;font-size:clamp(16px,1.7vw,24px);letter-spacing:2px}
+html.android-app.android-tv .sidebar .brand-symbol{width:36px;height:36px;flex-shrink:0}
+html.android-app.android-tv .sidebar .brand small{font-size:5px;letter-spacing:1px}
+html.android-app.android-tv .sidebar nav{display:block}
+html.android-app.android-tv .nav-item{width:100%;min-height:var(--tv-control);font-size:clamp(12px,1.1vw,17px);padding:10px 8px}
+html.android-app.android-tv .categories{display:block;overflow:auto;flex:1;max-height:none;margin:0}
+html.android-app.android-tv .category{display:flex;width:100%;max-width:none;min-height:var(--tv-control);font-size:clamp(11px,1vw,16px);padding:10px 8px;border:0}
+html.android-app.android-tv .category-label{display:block;font-size:8px;margin:18px 0 10px}
+html.android-app.android-tv .side-label,html.android-app.android-tv .side-bottom{display:none}
+html.android-app.android-tv .library-heading{flex-direction:row;align-items:center;gap:12px;margin:18px 0}
+html.android-app.android-tv .library-heading h1{font-size:clamp(24px,2.6vw,38px)}
+html.android-app.android-tv .library-heading .search{width:clamp(160px,24vw,320px)}
+html.android-app.android-tv .content-grid{grid-template-columns:repeat(auto-fill,minmax(clamp(125px,13vw,210px),1fr));gap:14px}
+html.android-app.android-tv .content-card strong{font-size:clamp(12px,1.1vw,16px)}
+html.android-app.android-tv .player{aspect-ratio:2.4}
+html.android-app.android-tv dialog{max-height:calc(100dvh - 2 * var(--tv-safe));max-width:calc(100vw - 2 * var(--tv-safe))}
+html.android-app.android-tv .connection-types{grid-template-columns:repeat(3,minmax(0,1fr))}
+html.android-app.android-tv .connection-type{display:flex;min-height:100px}
+html.android-app.android-tv .series-detail .episodes{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+@media(max-height:620px){html.android-app.android-tv .app.is-home footer{display:none}html.android-app.android-tv .notice{padding:7px 10px;margin-bottom:8px}html.android-app.android-tv .picker-brand small{font-size:6px}html.android-app.android-tv .home-welcome .kicker{display:none}html.android-app.android-tv .account-summary #account-updated{display:none}html.android-app.android-tv .display-mode-options button{min-height:110px;padding:12px;gap:8px}html.android-app.android-tv .display-mode-options svg{width:48px;height:40px}}
+@media(max-width:420px){.android-app .display-mode-options{gap:10px}.android-app .display-mode-options button{padding:12px;min-height:146px}.android-app .display-mode-options strong{font-size:17px}.android-app .display-mode-options small{font-size:11px}.android-phone #android-display-settings{top:18px;right:14px;font-size:10px;padding:6px 9px}.android-phone .picker-brand{padding-right:110px}.android-phone .picker-brand small{letter-spacing:1px}}
+html.android-app.android-tv .app.is-home .sidebar{display:none}
+@media(max-height:420px){html.android-app.android-tv .account-portals .portal{height:130px}html.android-app.android-tv .home-welcome h1{font-size:22px}html.android-app.android-tv .app.is-home #home-view{gap:6px}html.android-app.android-tv .app.is-home .account-summary{padding:5px 10px}}
+@media(max-height:420px){html.android-app.android-tv .home-welcome p{display:none}html.android-app.android-tv .app.is-home .topbar{min-height:32px;padding:3px 0;margin-bottom:6px}html.android-app.android-tv .app.is-home #home-view{gap:3px}html.android-app.android-tv .account-portals .portal small{font-size:7px;margin-top:5px;letter-spacing:0}html.android-app.android-tv .account-portals .portal strong{font-size:12px}html.android-app.android-tv .account-portals .portal{padding:10px}}

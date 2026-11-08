@@ -25,10 +25,24 @@ public class NexoInstrumentedTest {
         ByteArrayOutputStream result=new ByteArrayOutputStream();try(InputStream in=state.read()){byte[] b=new byte[512];int n;while((n=in.read(b))!=-1)result.write(b,0,n);}assertEquals(json,result.toString("UTF-8"));state.file.delete();state.close();
     }
     @Test public void webInterfaceLoadsEmptyAndUsesNativeBridge() throws Exception {
+        context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).edit().clear().commit();
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             AtomicReference<MainActivity> activity=new AtomicReference<>();scenario.onActivity(activity::set);
             waitFor(()->"true".equals(js(activity.get(),"!!document.querySelector('#picker-add')?.onclick")));
             assertEquals("true",js(activity.get(),"!!window.androidHost && document.documentElement.classList.contains('android-app')"));
+            waitFor(()->"true".equals(js(activity.get(),"!!document.querySelector('#display-mode-dialog')?.open")));
+            js(activity.get(),"document.querySelector('[data-display-mode=phone]').focus()");
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_LEFT);
+            assertEquals("\"tv\"",js(activity.get(),"document.activeElement.dataset.displayMode"));
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);
+            waitFor(()->"true".equals(js(activity.get(),"document.documentElement.classList.contains('android-tv') && !document.querySelector('#display-mode-dialog').open")));
+            assertEquals("tv",context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).getString("displayMode",""));
+            assertEquals("true",js(activity.get(),"document.querySelector('#android-display-settings').click();document.querySelector('[data-display-mode=phone]').click();document.documentElement.classList.contains('android-phone')"));
+            assertEquals("phone",context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).getString("displayMode",""));
+            scenario.recreate();scenario.onActivity(activity::set);
+            waitFor(()->"true".equals(js(activity.get(),"!!document.querySelector('#picker-add')?.onclick && !document.querySelector('#startup-intro')")));
+            assertEquals("false",js(activity.get(),"document.querySelector('#display-mode-dialog').open"));
+            assertEquals("true",js(activity.get(),"document.documentElement.classList.contains('android-phone')"));
             assertEquals("0",js(activity.get(),"document.querySelectorAll('.account-row').length"));
             assertEquals("\"Nexo IPTV\"",js(activity.get(),"document.title"));
             assertEquals("true",js(activity.get(),"document.querySelector('#picker-add').click(); document.querySelector('#account-dialog').open"));
@@ -56,6 +70,7 @@ public class NexoInstrumentedTest {
         return new Intent(context(),NativePlayerActivity.class).putExtra("session",token).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
     @Test public void nativeAc3AudioSelectionAndEmbeddedSubtitles() throws Exception {
+        context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).edit().putString("displayMode","tv").commit();
         try(ActivityScenario<NativePlayerActivity> scenario=ActivityScenario.launch(playback(false))){
             AtomicReference<NativePlayerActivity> a=new AtomicReference<>();scenario.onActivity(a::set);
             waitFor(()->a.get().current()!=null && a.get().current().player.getTime()>500 && a.get().current().player.getAudioTracksCount()>=2);
@@ -66,6 +81,18 @@ public class NexoInstrumentedTest {
             scenario.onActivity(activity->{MediaPlayer.TrackDescription[] tracks=player.getSpuTracks();for(int i=0;i<tracks.length;i++)if(tracks[i].id>=0){player.setSpuTrack(tracks[i].id);break;}});
             waitFor(()->player.getSpuTrack()>=0);
             scenario.onActivity(activity->{player.pause();player.setTime(4000);});waitFor(()->player.getTime()>=3500);
+            scenario.onActivity(activity->{
+                assertTrue(activity.tvMode);
+                assertTrue(activity.hud.getLeft()>0 && activity.hud.getRight()<activity.root.getWidth());
+                try { activity.queue.put(new JSONObject(activity.current().item.toString()).put("id","fixture-next").put("name","Canal siguiente")); } catch(JSONException e){throw new AssertionError(e);}
+                activity.hide.run();assertEquals(android.view.View.INVISIBLE,activity.hud.getVisibility());
+                activity.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DPAD_CENTER));
+                activity.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_DPAD_CENTER));
+                assertEquals(android.view.View.VISIBLE,activity.hud.getVisibility());assertTrue(activity.toggle.hasFocus());
+                activity.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_CHANNEL_UP));
+                assertEquals(1,activity.index);assertEquals("Canal siguiente",activity.name.getText().toString());
+                activity.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_CHANNEL_DOWN));assertEquals(0,activity.index);
+            });
         }
     }
     @Test public void fourNativeScreensWithExclusiveAudio() throws Exception {

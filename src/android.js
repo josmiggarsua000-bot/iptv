@@ -1,4 +1,6 @@
 import './android.css';
+import { setupAndroidDisplay } from './android-display.js';
+import androidVersion from '../android/version.json';
 if (window.NexoNative) {
   const pending = new Map();
   const origin = 'https://appassets.androidplatform.net';
@@ -26,20 +28,38 @@ if (window.NexoNative) {
   };
   window.androidHost = { play: options => rpc('play', options), program: options => rpc('program', options) };
   document.documentElement.classList.add('android-app');
-  document.querySelector('.side-bottom small').textContent = 'Android · v0.1.0';
-  if (window.NexoNative.isTv()) document.documentElement.classList.add('android-tv');
+  document.querySelector('.side-bottom small').textContent = 'Android · v' + androidVersion.name;
+  setupAndroidDisplay();
   window.nexoAndroidBack = () => {
+    const displayBack = window.nexoDisplayBack(); if (displayBack !== null) return displayBack;
     const dialog = document.querySelector('dialog[open]'); if (dialog) { dialog.close(); return true; }
     if (!document.querySelector('#series-detail').hidden) { document.querySelector('#close-series').click(); return true; }
     if (!document.querySelector('.app').hidden) { document.querySelector(document.querySelector('#home-view').hidden ? '[data-view="home"]' : '#change-account').click(); return true; }
     return false;
   };
+  const visible = el => { const r = el?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  let lastFocus = null, focusScheduled = false;
+  document.addEventListener('focusin', event => {
+    const el = event.target;
+    lastFocus = { id: el.id, label: el.getAttribute('aria-label'), category: el.matches('.category') ? el.textContent : null };
+  });
+  const restoreFocus = () => {
+    focusScheduled = false;
+    if (!document.documentElement.classList.contains('android-tv') || document.querySelector('#startup-intro') || document.documentElement.classList.contains('android-setup-pending')) return;
+    if (document.activeElement !== document.body && visible(document.activeElement)) return;
+    const scope = document.querySelector('dialog[open]') || document;
+    const controls = [...scope.querySelectorAll('button:not(:disabled),a[href],input,select')].filter(visible);
+    const remembered = controls.find(el => (lastFocus?.id && el.id === lastFocus.id) || (lastFocus?.label && el.getAttribute('aria-label') === lastFocus.label) || (lastFocus?.category && el.matches('.category') && el.textContent === lastFocus.category));
+    const preferred = controls.find(el => el.matches('.account-open,[data-open],.content-play,.episode,[data-display-mode]'));
+    (remembered || preferred || controls[0])?.focus({ preventScroll: true });
+  };
+  new MutationObserver(() => { if (!focusScheduled) { focusScheduled = true; requestAnimationFrame(restoreFocus); } }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden','open'] });
   document.addEventListener('keydown', event => {
-    if (!document.documentElement.classList.contains('android-tv') || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter'].includes(event.key)) return;
-    if (document.activeElement?.matches('input,select,textarea')) return;
+    if ((!document.documentElement.classList.contains('android-tv') && !document.querySelector('#display-mode-dialog[open]')) || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter'].includes(event.key)) return;
+    if (document.activeElement?.matches('select') || (document.activeElement?.matches('input,textarea') && !['ArrowUp','ArrowDown'].includes(event.key))) return;
     if (event.key === 'Enter') { if (document.activeElement?.matches('button,a')) { event.preventDefault(); document.activeElement.click(); } return; }
     const scope = document.querySelector('dialog[open]') || document;
-    const candidates = [...scope.querySelectorAll('button:not(:disabled),a[href],input,select')].filter(el => { const r=el.getBoundingClientRect(); return r.width>0 && r.height>0 && getComputedStyle(el).visibility!=='hidden'; });
+    const candidates = [...scope.querySelectorAll('button:not(:disabled),a[href],input,select')].filter(visible);
     const current = document.activeElement, rect = current?.getBoundingClientRect();
     if (!rect || !candidates.includes(current)) { candidates[0]?.focus(); event.preventDefault(); return; }
     const x=rect.x+rect.width/2,y=rect.y+rect.height/2,horizontal=event.key==='ArrowLeft'||event.key==='ArrowRight',direction=event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:1;

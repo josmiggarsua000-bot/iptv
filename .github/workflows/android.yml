@@ -44,12 +44,14 @@ jobs:
         with:
           ref: android-apks
           path: prebuilt
+      - name: Read Android version
+        run: echo "APK_VERSION=$(node -p 'require("./android/version.json").name')" >> "$GITHUB_ENV"
       - name: Verify signed release APK
         run: |
           test "$(node -p 'require("./prebuilt/build-info.json").sourceCommit')" = "$GITHUB_SHA"
           cd prebuilt
           sha256sum -c SHA256SUMS.txt
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs Nexo-IPTV-Android-0.1.0.apk | tee certificate.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs Nexo-IPTV-Android-${APK_VERSION}.apk | tee certificate.txt
           grep -q '42a49db518c4adf3ee8e22f471f03aad549b0cc0e1b91bf04360ad4f3de23389' certificate.txt
       - name: Enable KVM
         run: |
@@ -68,14 +70,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072
           script: |
             cd android && ./gradlew connectedDebugAndroidTest --stacktrace
-            adb install -r prebuilt/Nexo-IPTV-Android-0.1.0.apk
+            adb install -r prebuilt/Nexo-IPTV-Android-${APK_VERSION}.apk
             adb shell am start -n com.nexo.iptv/com.nexo.iptv.MainActivity
             sleep 6
-            mkdir -p artifacts
-            adb shell uiautomator dump /sdcard/nexo-window.xml
-            adb pull /sdcard/nexo-window.xml artifacts/android-release-window.xml
-            grep -q 'Agregar cuenta' artifacts/android-release-window.xml
-            adb exec-out screencap -p > artifacts/android-release-home.png
+            python3 scripts/android-release-smoke.py
       - name: Report Android test failures
         if: always()
         run: node scripts/report-android-tests.mjs
@@ -83,8 +81,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view android-v0.1.0 --repo "$GITHUB_REPOSITORY" || gh release create android-v0.1.0 --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --title "Nexo IPTV Android 0.1.0" --notes-file docs/ANDROID_RELEASE_NOTES.md --prerelease
-          gh release upload android-v0.1.0 prebuilt/Nexo-IPTV-Android-0.1.0.apk prebuilt/SHA256SUMS.txt artifacts/android-release-home.png --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view android-v${APK_VERSION} --repo "$GITHUB_REPOSITORY" || gh release create android-v${APK_VERSION} --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --title "Nexo IPTV Android ${APK_VERSION}" --notes-file docs/ANDROID_RELEASE_NOTES.md --prerelease
+          gh release upload android-v${APK_VERSION} prebuilt/Nexo-IPTV-Android-${APK_VERSION}.apk prebuilt/SHA256SUMS.txt artifacts/android-release-home.png --repo "$GITHUB_REPOSITORY" --clobber
       - uses: actions/upload-artifact@v4
         if: always()
         with:

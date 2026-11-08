@@ -29,7 +29,7 @@ public class MainActivity extends Activity {
         web = new WebView(this); setContentView(web);
         web.setBackgroundColor(0xff090713);
         web.setOnApplyWindowInsetsListener((v,insets) -> { v.setPadding(0,insets.getSystemWindowInsetTop(),0,insets.getSystemWindowInsetBottom()); return insets; });
-        WebSettings s = web.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setMediaPlaybackRequiresUserGesture(false);
+        WebSettings s = web.getSettings(); s.setUseWideViewPort(true); s.setLoadWithOverviewMode(false); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false); s.setAllowContentAccess(true); s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setBuiltInZoomControls(false); s.setSupportZoom(false);
         web.addJavascriptInterface(new Bridge(), "NexoNative");
@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
                 try { startActivityForResult(i, 11); return true; } catch (Exception e) { chooser.onReceiveValue(null); chooser = null; return false; }
             }
         });
+        applyDisplayMode(getSharedPreferences("nexo.preferences",MODE_PRIVATE).getString("displayMode",""));
         web.loadUrl(ORIGIN + "/assets/public/index.html");
     }
     static boolean trusted(Uri u) { return "https".equals(u.getScheme()) && "appassets.androidplatform.net".equals(u.getHost()); }
@@ -71,7 +72,22 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> web.evaluateJavascript("window.__nexoReply && window.__nexoReply("+o+")", null));
         } catch(Exception ignored) {}
     }
+    void applyDisplayMode(String mode) {
+        if ("tv".equals(mode)) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            web.getSettings().setTextZoom(100);
+        } else if ("phone".equals(mode)) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            web.getSettings().setTextZoom(Math.round(100 * getResources().getConfiguration().fontScale));
+        }
+    }
     public class Bridge {
+        @JavascriptInterface public String getDisplayMode() { return getSharedPreferences("nexo.preferences",MODE_PRIVATE).getString("displayMode",""); }
+        @JavascriptInterface public boolean setDisplayMode(String mode) {
+            if (!"tv".equals(mode) && !"phone".equals(mode)) return false;
+            boolean saved = getSharedPreferences("nexo.preferences",MODE_PRIVATE).edit().putString("displayMode",mode).commit();
+            if(saved)runOnUiThread(() -> applyDisplayMode(mode)); return saved;
+        }
         @JavascriptInterface public boolean isTv() { UiModeManager m=(UiModeManager)getSystemService(UI_MODE_SERVICE); return m.getCurrentModeType()==Configuration.UI_MODE_TYPE_TELEVISION; }
         @JavascriptInterface public void request(String id, String method, String raw) {
             if(id==null || !id.matches("[a-zA-Z0-9-]{1,64}") || raw==null || raw.length()>32*1024*1024)return;

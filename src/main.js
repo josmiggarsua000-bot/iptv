@@ -13,6 +13,7 @@ import { requestText, requestJson, friendlyError } from './network.js';
 import { readState, writeState } from './storage.js';
 import './style.css';
 import './arcade.css';
+import './android-display.css';
 
 const $ = selector => document.querySelector(selector);
 let state = { accounts: [], activeId: null, favorites: {} };

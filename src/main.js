@@ -15,7 +15,7 @@ const $ = selector => document.querySelector(selector);
 let state = { accounts: [], activeId: null, favorites: {} };
 let sessionAccountId = null;
 let view = 'home', group = '', limit = 120, accountType = null, busy = false, storageFailed = false;
-let playbackQueue = [];
+let playbackQueue = [], seriesItem = null;
 let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null, editingId = null;
 const video = $('#video'), dialog = $('#account-dialog');
 const account = () => state.accounts.find(a => a.id === sessionAccountId);
@@ -31,7 +31,7 @@ async function commit(next) {
 function resetFilters() { group = ''; limit = 120; $('#search').value = ''; }
 function setView(next) {
   if (!account()) return;
-  if (view !== next) { stopPlayback(); multiscreen.stopAll(); }
+  if (view !== next || seriesItem) { stopPlayback(); multiscreen.stopAll(); clearSeries(); }
   view = next; resetFilters(); render(); if (view === 'epg') epg.load(); window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function openAccount(existing = null) {
@@ -129,7 +129,7 @@ async function enterAccount(id) {
   busy = true;
   try {
     await commit({ ...state, activeId: id });
-    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = id; view = 'home'; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
+    stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = id; view = 'home'; episodeVersion++; clearSeries(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
   } catch (error) { notify(friendlyError(error)); render(); }
   finally { busy = false; render(); }
   const selected = account();
@@ -137,7 +137,7 @@ async function enterAccount(id) {
 }
 $('#change-account').onclick = () => {
   if (busy) return;
-  stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = null; episodeVersion++; $('#series-dialog').close(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
+  stopPlayback(); multiscreen.stopAll(); epg.reset(); sessionAccountId = null; episodeVersion++; clearSeries(); resetFilters(); notify(''); render(); window.scrollTo(0, 0);
 };
 $('#search').oninput = () => { limit = 120; renderItems(); };
 $('#clear-category').onclick = () => { group = ''; render(); };
@@ -184,7 +184,7 @@ function render() {
     button.append(node('span', '', name), node('b', '', count)); button.onclick = () => { group = name; limit = 120; render(); };
     $('#categories').append(button);
   }
-  $('#view-title').textContent = view === 'favorites' ? 'Favoritos' : sections[view] || 'Inicio';
+  $('#view-title').textContent = seriesItem ? seriesItem.name : view === 'favorites' ? 'Favoritos' : sections[view] || 'Inicio';
   $('#list-name').textContent = active?.name || 'Sin cuenta conectada';
   renderItems();
   if (view === 'epg') epg.render();
@@ -233,11 +233,11 @@ function renderItems() {
   $('#channels').replaceChildren();
   for (const item of filtered.slice(0, limit)) {
     const card = node('article', `content-card ${item.kind}${current?.id === item.id ? ' selected' : ''}`);
-    const play = node('button', 'content-play'); play.setAttribute('aria-label', `${item.kind === 'series' && !item.url ? 'Ver episodios de' : 'Reproducir'} ${item.name}`);
+    const play = node('button', 'content-play'); play.setAttribute('aria-label', `${item.kind === 'series' ? 'Ver episodios de' : 'Reproducir'} ${item.name}`);
     const art = node('span', 'content-art'); art.append(node('span', 'art-initials', item.name.slice(0, 2).toUpperCase()), node('span', 'art-play', item.kind === 'series' && !item.url ? '≡' : '▷'));
     if (httpUrl(item.logo)) { const img = node('img'); img.src = item.logo; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.onerror = () => img.remove(); art.prepend(img); }
     play.append(art, node('strong', '', item.name), node('span', 'content-group', item.group));
-    play.onclick = () => item.kind === 'series' && !item.url ? openSeries(item) : playItem(item);
+    play.onclick = () => item.kind === 'series' ? openSeries(item) : playItem(item);
     const star = node('button', 'favorite', favorites().has(item.id) ? '★' : '☆'); star.setAttribute('aria-label', `Favorito: ${item.name}`); star.setAttribute('aria-pressed', String(favorites().has(item.id)));
     star.onclick = async () => {
       if (busy) return; busy = true;
@@ -252,27 +252,39 @@ function renderItems() {
   $('#empty h2').textContent = !account() ? 'Tu universo está por comenzar' : view === 'favorites' ? 'Aquí van tus imprescindibles' : 'No hay títulos para mostrar';
   $('#empty p').textContent = !account() ? 'Agrega una cuenta para explorar tu contenido.' : $('#search').value || group ? 'Prueba otra búsqueda o categoría.' : view === 'favorites' ? 'Pulsa la estrella de un título para guardarlo.' : account().type === 'm3u' ? 'Tu lista no contiene elementos identificados en esta sección. Se organizan según su categoría o ruta.' : 'Tu proveedor no devolvió contenido para esta sección.';
 }
+function clearSeries() {
+  episodeVersion++; seriesItem = null; episodes = [];
+  $('#series-detail').hidden = true; $('.app').classList.remove('series-detail-open');
+}
 async function openSeries(item) {
+  stopPlayback(); seriesItem = item; episodes = []; playbackQueue = []; updatePlayerNavigation();
   const a = account(), version = ++episodeVersion;
-  $('#series-name').textContent = item.name; $('#series-status').textContent = 'Cargando temporadas y episodios…'; $('#season-field').hidden = true; $('#episodes').replaceChildren(); $('#series-dialog').showModal();
+  $('.app').classList.add('series-detail-open'); $('#series-detail').hidden = false; $('#watch-area').hidden = false;
+  $('#current-name').textContent = 'Selecciona un capítulo'; $('#playback-status').textContent = '';
+  $('#view-title').textContent = item.name; $('#series-name').textContent = item.name;
+  $('#series-status').textContent = 'Cargando temporadas y episodios…'; $('#season-field').hidden = true; $('#episodes').replaceChildren();
+  $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
-    const loaded = await loadEpisodes(a.config, item.streamId, requestJson);
+    // A local M3U may expose only a single episode without series metadata.
+    const loaded = item.url ? [{ ...item, kind: 'episode', season: 'unknown', number: 1 }] : await loadEpisodes(a.config, item.streamId, requestJson);
     if (version !== episodeVersion || a.id !== sessionAccountId) return;
     episodes = loaded; const seasons = [...new Set(episodes.map(e => e.season))]; $('#season-select').replaceChildren();
-    for (const season of seasons) { const option = node('option', '', `Temporada ${season}`); option.value = season; $('#season-select').append(option); }
+    for (const season of seasons) { const option = node('option', '', season === 'unknown' ? 'Sin temporada indicada' : `Temporada ${season}`); option.value = season; $('#season-select').append(option); }
     $('#season-field').hidden = !seasons.length; $('#series-status').textContent = episodes.length ? `${episodes.length} episodios disponibles` : 'Esta serie todavía no tiene episodios disponibles.'; renderEpisodes();
   } catch (error) { if (version === episodeVersion) $('#series-status').textContent = friendlyError(error); }
 }
 function renderEpisodes() {
   $('#episodes').replaceChildren();
   for (const ep of episodes.filter(e => e.season === $('#season-select').value)) {
-    const button = node('button', 'episode'); button.append(node('span', '', `${String(ep.number).padStart(2, '0')} /`), node('strong', '', ep.name), node('span', '', '▷'));
-    button.onclick = () => { $('#series-dialog').close(); playItem(ep); }; $('#episodes').append(button);
+    const selected = current?.kind === 'episode' && current.id === ep.id;
+    const button = node('button', `episode${selected ? ' selected' : ''}`);
+    button.setAttribute('aria-label', `Reproducir capítulo ${ep.number}: ${ep.name}`); button.setAttribute('aria-pressed', String(selected));
+    button.append(node('span', 'episode-number', `${String(ep.number).padStart(2, '0')}`), node('strong', '', ep.name), node('span', 'episode-action', selected ? 'REPRODUCIENDO' : '▷ REPRODUCIR'));
+    button.onclick = () => playItem(ep); $('#episodes').append(button);
   }
 }
 $('#season-select').onchange = renderEpisodes;
-$('#close-series').onclick = () => { episodeVersion++; $('#series-dialog').close(); };
-$('#series-dialog').addEventListener('cancel', () => { episodeVersion++; });
+$('#close-series').onclick = () => { stopPlayback(); clearSeries(); render(); };
 function stopPlayback() {
   playbackVersion++; player?.destroy(); player = null; current = null;
   video.hidden = true; $('#track-controls').hidden = true; $('#player-settings-toggle').setAttribute('aria-expanded', 'false'); $('#compat-bar').hidden = true;
@@ -307,6 +319,7 @@ function playItem(item, queue = null) {
   player = createPlayer(video, { status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
   player.play(item, account()?.config.url); updateTracks();
   if (item.kind === 'live') epg.showPlaying();
+  if (seriesItem) { $('#season-select').value = item.season; renderEpisodes(); }
   renderItems(); $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function updatePlayerNavigation() {
@@ -328,8 +341,18 @@ function changePlaying(step) {
 $('#player-previous').onclick = () => changePlaying(-1);
 $('#player-next').onclick = () => changePlaying(1);
 const intro = $('#startup-intro');
-intro.addEventListener('animationend', event => { if (event.target === intro) intro.remove(); });
-setTimeout(() => intro.remove(), 2000);
+const introSound = $('#startup-sound');
+function finishIntro() { intro.remove(); introSound.pause(); introSound.remove(); }
+intro.addEventListener('animationend', event => { if (event.target === intro) finishIntro(); });
+async function startIntro() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finishIntro(); return; }
+  try { await intro.querySelector('img').decode(); } catch { /* Keep startup usable if the image fails. */ }
+  intro.classList.add('is-ready');
+  introSound.volume = .3;
+  void introSound.play().catch(() => {}); // Browsers may require a gesture; desktop allows the startup sound.
+  setTimeout(finishIntro, 4200);
+}
+void startIntro();
 function updateClock() {
   if (!player?.isCompatibility()) return;
   const position = player.position(), duration = player.duration();
@@ -383,7 +406,7 @@ $('#local-refresh-file').onchange = async () => {
   } catch (error) { notify(friendlyError(error)); }
   finally { busy = false; $('#local-refresh-file').value = ''; render(); }
 };
-$('#close-player').onclick = () => { stopPlayback(); renderItems(); };
+$('#close-player').onclick = () => { stopPlayback(); if (seriesItem) { $('#watch-area').hidden = false; $('#current-name').textContent = 'Selecciona un capítulo'; renderEpisodes(); } renderItems(); };
 const toggleFullscreen = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#player').requestFullscreen(); } catch { $('#playback-status').textContent = 'No se pudo activar la pantalla completa.'; } };
 $('#fullscreen').onclick = toggleFullscreen;
 $('#player-fullscreen').onclick = toggleFullscreen;

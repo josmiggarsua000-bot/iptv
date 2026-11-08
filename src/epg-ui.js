@@ -77,8 +77,34 @@ export function setupEpg({ getAccount, updateConfig, getCategory = () => '', get
       row.append(button, track); $('#epg-programs').append(row);
     }
   }
+  function renderFullscreenPlaying(channel) {
+    const container = $('#fullscreen-channel-info');
+    container.replaceChildren(); container.hidden = !channel;
+    if (!channel) return;
+    const identity = node('div', '', 'fullscreen-channel-identity');
+    const fallback = node('span', channel.name.match(/\p{L}/gu)?.slice(0, 2).join('').toUpperCase() || 'TV', 'fullscreen-channel-fallback');
+    const logo = node('div', '', 'fullscreen-channel-logo'); logo.append(fallback);
+    if (httpUrl(channel.logo)) {
+      const img = document.createElement('img'); img.src = channel.logo; img.alt = ''; img.referrerPolicy = 'no-referrer';
+      img.onload = () => { fallback.hidden = true; }; img.onerror = () => { img.remove(); fallback.hidden = false; }; logo.append(img);
+    }
+    const name = node('div', '', 'fullscreen-channel-name');
+    name.append(node('small', 'TV EN VIVO', 'kicker'), node('strong', channel.name)); identity.append(logo, name);
+    const guide = node('div', '', 'fullscreen-channel-guide'), epg = data();
+    const { current, next } = epg ? currentPrograms(epg, channel) : {};
+    guide.append(node('small', current ? `AHORA · ${time(current.start)} — ${time(current.stop)}` : 'GUÍA EPG', 'kicker'));
+    guide.append(node('strong', current?.title || 'Sin información', 'fullscreen-program-title'));
+    if (current) {
+      const progress = document.createElement('progress'); progress.max = 100;
+      progress.value = Math.max(0, Math.min(100, (Date.now() - current.start) / (current.stop - current.start) * 100));
+      progress.setAttribute('aria-label', 'Progreso del programa en pantalla completa'); guide.append(progress);
+    }
+    if (next) guide.append(node('span', `Después · ${time(next.start)} · ${next.title}`, 'fullscreen-program-next'));
+    container.append(identity, guide);
+  }
   function renderPlaying() {
     const channel = getPlaying(), a = getAccount(), container = $('#channel-epg');
+    renderFullscreenPlaying(a ? channel : null);
     container.replaceChildren(); container.hidden = !channel || !a;
     if (!channel || !a) return;
     const epg = data();

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5179', '--strictPort'], { stdio: 'pipe' });
-let browser, fixture, hlsDir, engine;
+let browser, fixture, hlsDir, engine, page;
 try {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Vite no inició')), 15000);
@@ -18,7 +18,7 @@ try {
     vite.on('exit', code => { clearTimeout(timer); reject(new Error(`Vite terminó: ${code}`)); });
   });
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH === 'playwright' ? undefined : (process.env.CHROMIUM_PATH || '/usr/bin/chromium'), headless: true, args: ['--no-sandbox', '--enable-blink-features=AudioVideoTracks'] });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:5179');
@@ -41,7 +41,7 @@ try {
     return done;
   });
   const data = Buffer.from(media);
-  const playlist = port => `#EXTM3U\n#EXTINF:-1 tvg-id="news" group-title="Noticias",Noticias Uno\nhttp://127.0.0.1:${port}/video.webm\n#EXTINF:-1 group-title="Música",Música Dos\nhttp://127.0.0.1:${port}/video.webm?second=1`;
+  const playlist = port => `#EXTM3U\n#EXTINF:-1 tvg-id="news" tvg-logo="http://127.0.0.1:${port}/logo.svg" group-title="Noticias",Noticias Uno\nhttp://127.0.0.1:${port}/video.webm\n#EXTINF:-1 group-title="Música",Música Dos\nhttp://127.0.0.1:${port}/video.webm?second=1`;
   let requests = 0, denyList = false, dtdRequests = 0;
   const epgQueries = [];
   if (process.argv.includes('--hls')) {
@@ -59,7 +59,8 @@ try {
   fixture = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/ac3.mkv') {
+    if (url.pathname === '/logo.svg') { res.setHeader('Content-Type','image/svg+xml'); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"><rect width="80" height="60" fill="cyan"/></svg>'); }
+    else if (url.pathname === '/ac3.mkv') {
       const bytes = await readFile('tests/fixtures/dual-ac3-subtitles.mkv');
       const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range || '');
       const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
@@ -173,6 +174,9 @@ try {
   await page.locator('#player-next').click();
   await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Música Dos' && document.querySelector('#video').currentTime > 0);
   assert.equal(await page.evaluate(() => document.fullscreenElement?.id), 'player');
+  assert.equal(await page.locator('#fullscreen-channel-info').isVisible(), true);
+  assert.match(await page.locator('#fullscreen-channel-info').textContent(), /Música Dos/);
+  assert.equal(await page.locator('.fullscreen-program-title').textContent(), 'Sin información');
   assert.equal(await page.locator('#player-next').isDisabled(), true);
   await page.locator('#player-previous').click();
   await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Noticias Uno');
@@ -184,6 +188,19 @@ try {
   await page.waitForSelector('#epg-dialog', { state: 'hidden' });
   await page.waitForFunction(() => document.querySelector('#channel-epg').textContent.includes('Programa de prueba'));
   assert.match(await page.locator('#channel-epg').textContent(), /Siguiente programa/);
+  await page.locator('#player-fullscreen').click();
+  await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+  assert.equal(await page.locator('.fullscreen-program-title').textContent(), 'Programa de prueba');
+  await page.waitForFunction(() => document.querySelector('.fullscreen-channel-logo img')?.naturalWidth > 0);
+  assert.match(await page.locator('.fullscreen-program-next').textContent(), /Siguiente programa/);
+  await page.screenshot({ path: 'artifacts/fullscreen-canal-epg.png' });
+  await page.locator('#player-next').click();
+  await page.waitForFunction(() => document.querySelector('.fullscreen-program-title')?.textContent === 'Sin información');
+  assert.match(await page.locator('.fullscreen-channel-name').textContent(), /Música Dos/);
+  await page.locator('#player-previous').click();
+  await page.waitForFunction(() => document.querySelector('.fullscreen-program-title')?.textContent === 'Programa de prueba');
+  await page.locator('#player-fullscreen').click();
+  assert.equal(await page.locator('#fullscreen-channel-info').isVisible(), false);
   await page.screenshot({ path: 'artifacts/canal-epg.png', fullPage: true });
   await goto('epg');
   await page.waitForSelector('.epg-program');
@@ -323,6 +340,9 @@ try {
   await goto('series');
   await page.getByRole('button', { name: 'Ver episodios de Serie Xtream', exact: true }).click();
   await page.waitForSelector('#episodes .episode');
+  assert.equal(await page.locator('#series-detail').isVisible(), true);
+  assert.equal(await page.locator('#channels').isVisible(), false);
+  assert.equal(await page.locator('#watch-area').isVisible(), true);
   assert.equal(await page.locator('#season-select option').count(), 2);
   await page.locator('#season-select').selectOption('2');
   assert.match(await page.locator('#episodes .episode').textContent(), /Episodio dos/);
@@ -333,7 +353,12 @@ try {
   await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Episodio uno');
   await page.locator('#player-next').click();
   await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Episodio dos');
+  assert.equal(await page.locator('#season-select').inputValue(), '2');
+  assert.equal(await page.locator('#episodes .selected').count(), 1);
   await page.screenshot({ path: 'artifacts/cyberpunk-series.png', fullPage: true });
+  await page.locator('#close-series').click();
+  assert.equal(await page.locator('#series-detail').isVisible(), false);
+  assert.equal(await page.locator('#channels').isVisible(), true);
   await page.reload();
   assert.equal(await page.locator('.app').isVisible(), false);
   await page.getByRole('button', { name: 'Entrar a Xtream de prueba', exact: true }).click();
@@ -446,6 +471,12 @@ try {
   await page.screenshot({ path: 'artifacts/cyberpunk-1000px.png', fullPage: true });
   assert.deepEqual(errors, []);
   console.log('UI: cuentas y migración, EPG XMLTV, vencimiento, Refresh manual/automático y opcional, SRT, 4 pantallas con audio exclusivo, cine y episodios: OK');
+} catch (error) {
+  if (page && !page.isClosed()) {
+    await page.screenshot({ path: 'artifacts/ui-failure.png', fullPage: true });
+    console.error(await page.evaluate(() => ({ page: document.querySelector('#view-title').textContent, cards: document.querySelector('#channels').textContent, notice: document.querySelector('#notice').textContent, error: document.querySelector('#account-error').textContent })));
+  }
+  throw error;
 } finally {
   await browser?.close();
   await engine?.close();

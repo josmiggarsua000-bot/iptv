@@ -54,7 +54,7 @@ app.whenReady().then(async () => {
       icon: logoName ? path.join(assetsDirectory, logoName) : undefined,
       width: 1440, height: 940, minWidth: 1000, minHeight: 700,
       backgroundColor: '#090713', title: 'Nexo IPTV', autoHideMenuBar: true,
-      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, enableBlinkFeatures: 'AudioVideoTracks' }
+      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, enableBlinkFeatures: 'AudioVideoTracks', autoplayPolicy: 'no-user-gesture-required' }
     });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());

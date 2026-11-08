@@ -4,7 +4,7 @@ El proyecto nativo está en android/. Reutiliza la interfaz Vite y emplea LibVLC
 
 ## Compilación
 
-Requiere JDK 17 o 21, Android SDK 35, Build Tools 35.0.0 y el Gradle Wrapper incluido.
+Requiere JDK 21, Android SDK 35, Build Tools 35.0.0 y el Gradle Wrapper incluido.
 
 ```
 npm ci

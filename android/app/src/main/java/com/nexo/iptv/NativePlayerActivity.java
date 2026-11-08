@@ -108,7 +108,14 @@ public class NativePlayerActivity extends Activity {
     String clock(long ms){long s=ms/1000;return String.format(Locale.ROOT,"%02d:%02d",s/60,s%60);}
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){reveal();return super.dispatchTouchEvent(event);}
     @Override public boolean dispatchGenericMotionEvent(android.view.MotionEvent event){reveal();return super.dispatchGenericMotionEvent(event);}
-    @Override public boolean dispatchKeyEvent(KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN){boolean hidden=hud!=null&&hud.getVisibility()!=View.VISIBLE;reveal();if(hidden&&event.getKeyCode()!=KeyEvent.KEYCODE_BACK){toggle.requestFocus();return true;}}return super.dispatchKeyEvent(event);}
+    @Override public boolean dispatchKeyEvent(KeyEvent event){
+        if(event.getAction()==KeyEvent.ACTION_DOWN){
+            int key=event.getKeyCode();boolean hidden=hud!=null&&hud.getVisibility()!=View.VISIBLE;reveal();
+            if(key==KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE){Slot slot=current();if(slot!=null){if(slot.player.isPlaying())slot.player.pause();else slot.player.play();}return true;}
+            if(hidden&&(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT||key==KeyEvent.KEYCODE_DPAD_UP||key==KeyEvent.KEYCODE_DPAD_DOWN||key==KeyEvent.KEYCODE_DPAD_CENTER||key==KeyEvent.KEYCODE_ENTER)){toggle.requestFocus();return true;}
+        }
+        return super.dispatchKeyEvent(event);
+    }
     @Override protected void onPause(){super.onPause();for(Slot slot:slots){slot.resume=slot.player.isPlaying();slot.player.pause();}}
     @Override protected void onResume(){super.onResume();immersive();for(Slot slot:slots)if(slot.resume)slot.player.play();}
     void releaseSlots(){handler.removeCallbacksAndMessages(null);for(Slot slot:slots){slot.player.stop();slot.player.detachViews();slot.player.release();}slots.clear();for(File file:subtitleFiles)file.delete();subtitleFiles.clear();if(vlc!=null){vlc.release();vlc=null;}}

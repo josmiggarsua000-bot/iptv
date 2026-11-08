@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -18,11 +18,22 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
+          java-version: '21'
+      - name: Prepare installed Android SDK
+        run: |
+          python3 - <<'PYTHON'
+          import os, subprocess
+          tool = os.path.join(os.environ['ANDROID_HOME'], 'cmdline-tools/latest/bin/sdkmanager')
+          run = subprocess.run([tool, 'platforms;android-35', 'build-tools;35.0.0'], input='y\n'*500, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+          if run.returncode:
+              message = run.stdout[-2500:].replace('%','%25').replace('\n','%0A')
+              print('::error title=Android SDK::'+message)
+              raise SystemExit(run.returncode)
+          print('Android SDK 35 listo')
+          PYTHON
       - uses: gradle/actions/setup-gradle@v4
       - name: Build web interface and test modules
         run: |

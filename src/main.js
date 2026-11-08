@@ -1,4 +1,6 @@
 import { createPlayer } from './player.js';
+import { setupPlayerHud } from './player-hud.js';
+import { accountStatus } from './account-status.js';
 import { setupEpg } from './epg-ui.js';
 import { resolveEpgUrl, epgMode } from './epg.js';
 import { setupMultiscreen } from './multiscreen.js';
@@ -18,6 +20,7 @@ let view = 'home', group = '', limit = 120, accountType = null, busy = false, st
 let playbackQueue = [], seriesItem = null;
 let current = null, player = null, playbackVersion = 0, episodeVersion = 0, episodes = [], deleteId = null, editingId = null;
 const video = $('#video'), dialog = $('#account-dialog');
+const hud = setupPlayerHud({ video, getPlayer: () => player });
 const account = () => state.accounts.find(a => a.id === sessionAccountId);
 const epg = setupEpg({ getAccount: account, updateConfig, getCategory: () => group, getPlaying: () => current?.kind === 'live' ? current : null, play: item => { setView('live'); playItem(item); } });
 const multiscreen = setupMultiscreen(account);
@@ -41,7 +44,7 @@ function openAccount(existing = null) {
   $('#account-dialog-title').textContent = editingId ? 'Editar cuenta' : 'Agregar cuenta';
   $('#account-submit').textContent = editingId ? 'Guardar cambios →' : 'Conectar cuenta →';
   $('#use-xtream').hidden = !editingId || !xtreamConfigFromM3U(existing);
-  $('#edit-note').hidden = !editingId;
+  $('#edit-note').hidden = !editingId; $('#edit-delete').hidden = !editingId;
   $('#edit-note').textContent = existing?.type === 'm3u' ? 'M3U puede contar cada episodio por separado. Si el enlace incluye credenciales, Usar catálogo completo de Xtream permite cargar películas y series agrupadas. Guarda para confirmar el cambio de fuente; se conserva la cuenta anterior si la conexión falla. Los favoritos de TV/cine se relacionan cuando se identifican; un episodio M3U no equivale a una serie Xtream.' : 'Puedes cambiar el nombre o los datos de conexión. Los cambios de servidor o credenciales se validan antes de guardar.';
   $('#account-fields').hidden = true; $('#account-submit').disabled = true; $('#account-error').textContent = '';
   $('#file-name').textContent = 'Ningún archivo seleccionado';
@@ -193,15 +196,19 @@ function renderAccounts() {
   $('#accounts-list').replaceChildren();
   if (!state.accounts.length) return;
   for (const a of state.accounts) {
-    const row = node('div', 'account-row');
-    const counts = catalogCounts(a.items);
+    const row = node('article', 'account-row');
     const avatar = node('span', 'account-avatar', ''); avatar.setAttribute('aria-hidden', 'true');
-    const info = node('div', 'account-info'); info.append(node('strong', '', a.name), node('small', '', `${a.type === 'xtream' ? 'XTREAM CODES' : 'M3U'} · ${a.items.length} ${a.type === 'm3u' ? 'entradas' : 'elementos'}`), node('small', 'account-counts', `${counts.live} ${counts.live === 1 ? 'canal' : 'canales'} · ${counts.movie} ${counts.movie === 1 ? 'película' : 'películas'} · ${counts.series} ${a.type === 'm3u' ? (counts.series === 1 ? 'entrada de serie' : 'entradas de series') : (counts.series === 1 ? 'serie' : 'series')}`));
-    const edit = node('button', 'secondary', 'Editar'); edit.setAttribute('aria-label', `Editar cuenta ${a.name}`); edit.onclick = () => openAccount(a);
-    const select = node('button', 'primary account-enter', 'Entrar →'); select.setAttribute('aria-label', `Entrar a ${a.name}`); select.onclick = () => enterAccount(a.id);
-    const refresh = node('button', 'text-button', 'Actualizar'); refresh.disabled = a.type === 'm3u' && !a.config.url; refresh.title = refresh.disabled ? 'Vuelve a agregar el archivo local para actualizarlo.' : 'Actualizar catálogo'; refresh.onclick = () => refreshAccount(a.id);
-    const remove = node('button', 'icon-button', '×'); remove.setAttribute('aria-label', `Eliminar cuenta ${a.name}`); remove.onclick = () => { deleteId = a.id; $('#delete-error').textContent = ''; $('#delete-dialog').showModal(); };
-    const actions = node('div', 'account-actions'); actions.append(select, edit, refresh, remove); row.append(avatar, info, actions); $('#accounts-list').append(row);
+    const info = node('div', 'account-info'), status = accountStatus(a);
+    info.append(node('strong', '', a.name));
+    const expiration = node('span', 'account-expiration', status.expiresAt ? `${status.expired ? 'Venció' : 'Vence'}: ${new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(status.expiresAt)}` : 'Vencimiento: No informado');
+    const badge = node('span', `account-status ${status.state}`, status.label); badge.setAttribute('aria-label', `Estado de ${a.name}: ${status.label}`);
+    badge.title = status.expired ? 'La fecha de vencimiento ya pasó.' : status.state === 'unknown' ? 'El proveedor no informó el estado de esta cuenta.' : `Estado informado por el proveedor${a.updatedAt ? ' en la última actualización de la cuenta' : ''}.`;
+    const meta = node('div', 'account-meta'); meta.append(expiration, badge); info.append(meta);
+    const edit = node('button', 'account-edit'); edit.setAttribute('aria-label', `Editar cuenta ${a.name}`); edit.title = 'Editar cuenta'; edit.onclick = () => openAccount(a);
+    const pencil = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); pencil.setAttribute('viewBox', '0 0 24 24'); pencil.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', 'M15 5l4 4M4 20l4-1L20 7a2.12 2.12 0 0 0-3-3L5 16l-1 4Z'); pencil.append(path); edit.append(pencil);
+    const select = node('button', 'account-enter account-open', ''); select.setAttribute('aria-label', `Entrar a ${a.name}`); select.onclick = () => enterAccount(a.id);
+    row.append(select, avatar, info, edit); $('#accounts-list').append(row);
   }
 }
 async function refreshAccount(id) {
@@ -217,6 +224,7 @@ async function refreshAccount(id) {
     notify(warnings.length ? `Actualización parcial. Se conservó el catálogo anterior de: ${warnings.map(k => sections[k]).join(', ')}.` : 'Catálogo actualizado.'); render();
   } catch (error) { notify(`No se pudo actualizar. Se conserva tu catálogo anterior. ${friendlyError(error)}`); } finally { busy = false; render(); }
 }
+$('#edit-delete').onclick = () => { if (!editingId || busy) return; deleteId = editingId; dialog.close(); $('#delete-error').textContent = ''; $('#delete-dialog').showModal(); };
 $('#cancel-delete').onclick = () => $('#delete-dialog').close();
 $('#confirm-delete').onclick = async () => {
   if (busy) return; busy = true;
@@ -262,6 +270,7 @@ async function openSeries(item) {
   $('.app').classList.add('series-detail-open'); $('#series-detail').hidden = false; $('#watch-area').hidden = false;
   $('#current-name').textContent = 'Selecciona un capítulo'; $('#playback-status').textContent = '';
   $('#view-title').textContent = item.name; $('#series-name').textContent = item.name;
+  $('#season-cover').hidden = true; $('#season-cover').removeAttribute('src');
   $('#series-status').textContent = 'Cargando temporadas y episodios…'; $('#season-field').hidden = true; $('#episodes').replaceChildren();
   $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
@@ -275,10 +284,18 @@ async function openSeries(item) {
 }
 function renderEpisodes() {
   $('#episodes').replaceChildren();
+  const cover = episodes.find(ep => ep.season === $('#season-select').value && httpUrl(ep.seasonLogo))?.seasonLogo;
+  const seasonCover = $('#season-cover'); seasonCover.hidden = !cover;
+  seasonCover.onerror = () => { seasonCover.hidden = true; };
+  if (cover) { seasonCover.referrerPolicy = 'no-referrer'; seasonCover.src = cover; } else seasonCover.removeAttribute('src');
   for (const ep of episodes.filter(e => e.season === $('#season-select').value)) {
     const selected = current?.kind === 'episode' && current.id === ep.id;
     const button = node('button', `episode${selected ? ' selected' : ''}`);
     button.setAttribute('aria-label', `Reproducir capítulo ${ep.number}: ${ep.name}`); button.setAttribute('aria-pressed', String(selected));
+    if (httpUrl(ep.logo)) {
+      const img = document.createElement('img'); img.src = ep.logo; img.alt = ''; img.className = 'episode-cover'; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+      button.classList.add('has-cover'); img.onerror = () => { img.remove(); button.classList.remove('has-cover'); }; button.append(img);
+    }
     button.append(node('span', 'episode-number', `${String(ep.number).padStart(2, '0')}`), node('strong', '', ep.name), node('span', 'episode-action', selected ? 'REPRODUCIENDO' : '▷ REPRODUCIR'));
     button.onclick = () => playItem(ep); $('#episodes').append(button);
   }
@@ -296,7 +313,7 @@ function updateTracks() {
   for (const track of videos) { const option = node('option', '', track.label); option.value = track.id; option.selected = track.selected; $('#video-track').append(option); }
   if (!videos.length) $('#video-track').append(node('option', '', 'Video automático'));
   $('#video-track').disabled = !videos.length;
-  $('#compat-bar').hidden = !player?.isCompatibility();
+  $('#compat-bar').hidden = !player?.isCompatibility(); hud.refresh();
   $('#compat-enable').disabled = !!player?.isCompatibility(); $('#compat-enable').textContent = player?.isCompatibility() ? 'Motor compatible activo' : 'Motor compatible AC3 / DTS';
   $('#audio-track').replaceChildren();
   if (audio.length) { const off = node('option', '', 'Desactivado (sin audio)'); off.value = 'off'; off.selected = player?.audioDisabled(); $('#audio-track').append(off); }
@@ -320,6 +337,7 @@ function playItem(item, queue = null) {
   player.play(item, account()?.config.url); updateTracks();
   if (item.kind === 'live') epg.showPlaying();
   if (seriesItem) { $('#season-select').value = item.season; renderEpisodes(); }
+  hud.reveal();
   renderItems(); $('#watch-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function updatePlayerNavigation() {
@@ -354,14 +372,16 @@ async function startIntro() {
 }
 void startIntro();
 function updateClock() {
-  if (!player?.isCompatibility()) return;
+  if (!player || (!player.isCompatibility() && !hud.fullscreen())) return;
   const position = player.position(), duration = player.duration();
   const clock = value => { const seconds = Math.max(0, Math.floor(value || 0)); return `${Math.floor(seconds / 3600) ? Math.floor(seconds / 3600) + ':' : ''}${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; };
   $('#compat-clock').textContent = `${clock(position)} / ${duration ? clock(duration) : 'EN VIVO'}`;
-  $('#compat-seek').max = duration || 1; $('#compat-seek').disabled = !duration; $('#compat-seek').value = position;
-  $('#compat-play').textContent = video.paused ? '▶' : 'Ⅱ'; $('#compat-volume').value = video.volume;
+  $('#compat-seek').max = duration || 1; $('#compat-seek').disabled = !duration || (!player.isCompatibility() && (!video.seekable.length || video.seekable.end(video.seekable.length - 1) <= video.seekable.start(0)));  if (!$('#compat-seek').matches(':active')) $('#compat-seek').value = position;
+  $('#compat-play').textContent = video.paused ? '▶' : 'Ⅱ'; $('#compat-play').setAttribute('aria-label', video.paused ? 'Reproducir' : 'Pausar'); $('#compat-volume').value = video.muted ? 0 : video.volume;
+  $('#player-mute').textContent = video.muted ? 'Sin audio' : 'Audio'; $('#player-mute').setAttribute('aria-pressed', String(video.muted));
 }
-for (const event of ['timeupdate', 'play', 'pause', 'volumechange', 'loadedmetadata']) video.addEventListener(event, updateClock);
+document.addEventListener('fullscreenchange', updateClock);
+for (const event of ['timeupdate', 'play', 'pause', 'volumechange', 'loadedmetadata', 'progress', 'durationchange', 'seeked']) video.addEventListener(event, updateClock);
 $('#compat-enable').onclick = () => player?.enableCompatibility();
 $('#compat-play').onclick = () => { if (video.paused) void video.play().catch(() => {}); else video.pause(); };
 $('#compat-volume').oninput = () => { video.volume = Number($('#compat-volume').value); video.muted = video.volume === 0; };
@@ -407,7 +427,7 @@ $('#local-refresh-file').onchange = async () => {
   finally { busy = false; $('#local-refresh-file').value = ''; render(); }
 };
 $('#close-player').onclick = () => { stopPlayback(); if (seriesItem) { $('#watch-area').hidden = false; $('#current-name').textContent = 'Selecciona un capítulo'; renderEpisodes(); } renderItems(); };
-const toggleFullscreen = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#player').requestFullscreen(); } catch { $('#playback-status').textContent = 'No se pudo activar la pantalla completa.'; } };
+const toggleFullscreen = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#player').requestFullscreen(); hud.syncFullscreen(); updateClock(); } catch { $('#playback-status').textContent = 'No se pudo activar la pantalla completa.'; } };
 $('#fullscreen').onclick = toggleFullscreen;
 $('#player-fullscreen').onclick = toggleFullscreen;
 window.addEventListener('beforeunload', () => { player?.destroy(); multiscreen.stopAll(); });

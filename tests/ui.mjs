@@ -78,7 +78,15 @@ try {
     else if (url.pathname === '/xmltv.dtd') { dtdRequests++; res.end(''); }
     else if (hlsDir && /^\/dual[-\w]*\.(mp4|m3u8|ts|vtt)$/.test(url.pathname)) {
       res.setHeader('Content-Type', url.pathname.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : url.pathname.endsWith('.mp4') ? 'video/mp4' : url.pathname.endsWith('.vtt') ? 'text/vtt' : 'video/mp2t');
-      res.end(await readFile(join(hlsDir, url.pathname.slice(1))));
+      const bytes = await readFile(join(hlsDir, url.pathname.slice(1)));
+      if (url.pathname.endsWith('.mp4')) {
+        res.setHeader('Accept-Ranges', 'bytes');
+        const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range || '');
+        const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+        if (start >= bytes.length) { res.writeHead(416); res.end(); return; }
+        if (range) { res.statusCode = 206; res.setHeader('Content-Range', `bytes ${start}-${end}/${bytes.length}`); }
+        res.setHeader('Content-Length', end - start + 1); res.end(bytes.subarray(start, end + 1));
+      } else res.end(bytes);
     }
     else if (url.pathname === '/player_api.php') {
       res.setHeader('Content-Type', 'application/json');
@@ -90,7 +98,7 @@ try {
       else if (action === 'get_live_streams') result = [{ stream_id: 1, name: 'TV Xtream', category_id: 1 }];
       else if (action === 'get_vod_streams') result = [{ stream_id: 2, name: 'Cine Xtream', category_id: 1, container_extension: 'webm' }];
       else if (action === 'get_series') result = [{ series_id: 3, name: 'Serie Xtream', category_id: 1 }];
-      else if (action === 'get_series_info') result = { episodes: { 1: [{ id: 4, title: 'Episodio uno', episode_num: 1, container_extension: 'webm' }], 2: [{ id: 5, title: 'Episodio dos', episode_num: 1, container_extension: 'webm' }] } };
+      else if (action === 'get_series_info') result = { seasons: [{ season_number: 1, cover: `http://127.0.0.1:${fixture.address().port}/logo.svg` }], episodes: { 1: [{ id: 4, title: 'Episodio uno', info: { movie_image: `http://127.0.0.1:${fixture.address().port}/logo.svg` }, episode_num: 1, container_extension: 'webm' }], 2: [{ id: 5, title: 'Episodio dos', episode_num: 1, container_extension: 'webm' }] } };
       else result = [];
       res.end(JSON.stringify(result));
     }
@@ -126,6 +134,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#account-error').textContent.includes('válida'));
   await page.locator('#cancel-account').click();
   await addM3u('Mi cuenta M3U', playlist(port) + `\n#EXTINF:-1 group-title="Películas",Cine de prueba\nhttp://127.0.0.1:${port}/video.webm?movie=1\n#EXTINF:-1 group-title="Series",Serie M3U\nhttp://127.0.0.1:${port}/video.webm?series=1`);
+  assert.equal(await page.locator('.account-counts').count(), 0);
+  assert.equal(await page.locator('.account-status').first().textContent(), 'No informado');
   assert.equal(await page.locator('#count-live').textContent(), '2');
   assert.equal(await page.locator('.sidebar').isVisible(), false);
   assert.equal(await page.locator('.account-portals [data-open]').count(), 4);
@@ -193,6 +203,27 @@ try {
   assert.equal(await page.locator('.fullscreen-program-title').textContent(), 'Programa de prueba');
   await page.waitForFunction(() => document.querySelector('.fullscreen-channel-logo img')?.naturalWidth > 0);
   assert.match(await page.locator('.fullscreen-program-next').textContent(), /Siguiente programa/);
+  await page.waitForSelector('#fullscreen-controls #player-previous');
+  assert.equal(await page.locator('#fullscreen-controls #player-previous').count(), 1);
+  assert.equal(await page.locator('#fullscreen-controls #compat-play').count(), 1);
+  assert.equal(await page.locator('#video').evaluate(v => v.controls), false);
+  // Stationary pointer hides the entire HUD; movement restores controls and EPG.
+  await page.mouse.move(700, 300);
+  await page.waitForFunction(() => document.querySelector('#player').classList.contains('hud-idle'), { timeout: 5000 });
+  assert.equal(await page.locator('#player-hud').isVisible(), false);
+  await page.mouse.move(730, 320);
+  await page.waitForFunction(() => !document.querySelector('#player').classList.contains('hud-idle'));
+  assert.equal(await page.locator('#player-hud').isVisible(), true);
+  await page.locator('#compat-play').click();
+  await page.waitForFunction(() => !document.querySelector('#video').paused);
+  await page.locator('#compat-play').click();
+  await page.waitForFunction(() => document.querySelector('#video').paused);
+  await page.locator('#compat-volume').fill('0.4');
+  assert.equal(await page.locator('#video').evaluate(v => v.volume), 0.4);
+  await page.locator('#player-mute').click();
+  assert.equal(await page.locator('#video').evaluate(v => v.muted), true);
+  await page.locator('#player-mute').click();
+  assert.equal(await page.locator('#video').evaluate(v => v.muted), false);
   await page.screenshot({ path: 'artifacts/fullscreen-canal-epg.png' });
   await page.locator('#player-next').click();
   await page.waitForFunction(() => document.querySelector('.fullscreen-program-title')?.textContent === 'Sin información');
@@ -343,8 +374,12 @@ try {
   assert.equal(await page.locator('#series-detail').isVisible(), true);
   assert.equal(await page.locator('#channels').isVisible(), false);
   assert.equal(await page.locator('#watch-area').isVisible(), true);
+  assert.equal(await page.locator('#season-cover').isVisible(), true);
+  assert.equal(await page.locator('#episodes .episode-cover').count(), 1);
   assert.equal(await page.locator('#season-select option').count(), 2);
   await page.locator('#season-select').selectOption('2');
+  assert.equal(await page.locator('#season-cover').isVisible(), false);
+  assert.equal(await page.locator('#episodes .episode-cover').count(), 0);
   assert.match(await page.locator('#episodes .episode').textContent(), /Episodio dos/);
   await page.locator('#episodes .episode').click();
   await page.waitForFunction(() => document.querySelector('#video').currentTime > 0);
@@ -364,7 +399,10 @@ try {
   await page.getByRole('button', { name: 'Entrar a Xtream de prueba', exact: true }).click();
   assert.match(await page.locator('#home-account').textContent(), /Xtream de prueba/);
   await page.locator('#change-account').click();
-  await page.getByRole('button', { name: 'Eliminar cuenta Xtream de prueba', exact: true }).click();
+  assert.equal(await page.locator('.account-row').filter({ hasText: 'Xtream de prueba' }).locator('.account-status').textContent(), 'Activa');
+  assert.match(await page.locator('.account-row').filter({ hasText: 'Xtream de prueba' }).locator('.account-expiration').textContent(), /2030/);
+  await page.getByRole('button', { name: 'Editar cuenta Xtream de prueba', exact: true }).click();
+  await page.locator('#edit-delete').click();
   await page.locator('#confirm-delete').click();
   await page.waitForSelector('#delete-dialog', { state: 'hidden' });
   assert.equal(await page.locator('.account-row').count(), 2);
@@ -433,6 +471,17 @@ try {
     await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Otra película' && document.querySelector('#video').currentTime > 0);
     await page.locator('#player-previous').click();
     await page.waitForFunction(() => document.querySelector('#current-name').textContent === 'Película bilingüe');
+    // Check native seeking on indexed MP4, not the non-indexed MediaRecorder WebM fixture.
+    await page.locator('#player-fullscreen').click();
+    await page.waitForFunction(() => document.fullscreenElement?.id === 'player');
+    await page.waitForFunction(() => document.querySelector('#video').duration > 7 && Number(document.querySelector('#compat-seek').max) > 7 && !document.querySelector('#compat-seek').disabled && !document.querySelector('#video').paused);
+    await page.locator('#compat-play').click();
+    await page.waitForFunction(() => document.querySelector('#video').paused);
+    await page.locator('#compat-seek').fill('3');
+    await page.locator('#compat-seek').dispatchEvent('change');
+    await page.waitForFunction(() => document.querySelector('#video').currentTime >= 2.9);
+    await page.mouse.move(700, 300);
+    await page.locator('#player-fullscreen').click();
     await addM3u('TS directo', `#EXTM3U\n#EXTINF:-1,Canal TS\nhttp://127.0.0.1:${port}/stream0.ts`);
     await goto('live');
     await page.getByRole('button', { name: 'Reproducir Canal TS', exact: true }).click();

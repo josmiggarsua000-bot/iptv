@@ -46,9 +46,12 @@ export async function loadXtream(config, request) {
 export async function loadEpisodes(config, seriesId, request) {
   const data = await request(apiUrl(config, 'get_series_info', { series_id: String(seriesId) }));
   if (!data?.episodes || typeof data.episodes !== 'object') throw new Error('El proveedor no devolvió los episodios de esta serie.');
+  const image = (...values) => values.map(value => httpUrl(value)).find(Boolean) || '';
+  const seasonCovers = new Map((Array.isArray(data.seasons) ? data.seasons : []).map(season => [String(season.season_number), image(season.cover_big, season.cover, season.cover_tmdb)]));
   return Object.entries(data.episodes).flatMap(([season, episodes]) => (Array.isArray(episodes) ? episodes : []).filter(e => e.id != null).map(e => ({
     id: `episode:${e.id}`, kind: 'episode', season: String(season), number: Number(e.episode_num) || 0,
     name: String(e.title || `Episodio ${e.episode_num || e.id}`), group: `Temporada ${season}`,
-    url: httpUrl(e.direct_source) || streamUrl(config, 'series', e.id, extensionOf(e.container_extension)), logo: ''
+    url: httpUrl(e.direct_source) || streamUrl(config, 'series', e.id, extensionOf(e.container_extension)),
+    logo: image(e.info?.movie_image, e.info?.cover_big, e.info?.cover, e.cover_big, e.cover, e.stream_icon), seasonLogo: seasonCovers.get(String(season)) || ''
   }))).sort((a, b) => Number(a.season) - Number(b.season) || a.number - b.number);
 }

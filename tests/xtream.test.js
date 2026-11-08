@@ -46,3 +46,13 @@ test('Clasifica listas M3U y migra biblioteca anterior conservando favoritos', (
   assert.equal(state.accounts[0].name, 'Anterior');
   assert.deepEqual(state.favorites[state.activeId], [channels[0].id]);
 });
+
+test('Carátulas de episodios y temporadas son opcionales y se aceptan solo URLs HTTP/HTTPS', async () => {
+  const items = await loadEpisodes(config, 4, async () => ({
+    seasons: [{ season_number: 1, cover_big: 'https://cdn.example.com/season1.jpg' }, { season_number: 2, cover: 'file:///bad.jpg' }],
+    episodes: { 1: [{ id: 1, info: { movie_image: 'https://cdn.example.com/episode1.jpg' } }], 2: [{ id: 2, info: { movie_image: 'javascript:alert(1)' } }] }
+  }));
+  assert.equal(items[0].logo, 'https://cdn.example.com/episode1.jpg');
+  assert.equal(items[0].seasonLogo, 'https://cdn.example.com/season1.jpg');
+  assert.equal(items[1].logo, ''); assert.equal(items[1].seasonLogo, '');
+});

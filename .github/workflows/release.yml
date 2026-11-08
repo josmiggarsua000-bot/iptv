@@ -54,7 +54,7 @@ jobs:
         run: |
           gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --title "Nexo IPTV $env:RELEASE_TAG - Neon Edition" --notes-file docs/RELEASE_NOTES.md --prerelease
+            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --title "Nexo IPTV $env:RELEASE_TAG" --notes-file docs/RELEASE_NOTES.md --prerelease
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           gh release upload $env:RELEASE_TAG release/Nexo-IPTV-Windows11-x64.zip release/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --clobber

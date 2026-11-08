@@ -1,4 +1,4 @@
-# Nexo IPTV · Neon Edition
+# Nexo IPTV
 
 Reproductor de escritorio para Windows 11 x64, con interfaz en español y diseño cyberpunk.
 

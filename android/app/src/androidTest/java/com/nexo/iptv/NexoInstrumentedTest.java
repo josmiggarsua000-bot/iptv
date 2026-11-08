@@ -62,6 +62,34 @@ public class NexoInstrumentedTest {
 
         }
     }
+    @Test public void tvRemoteSelectsCardsAndHoldsOkForFavorites() throws Exception {
+        context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).edit().putString("displayMode","tv").commit();
+        SecureState state=new SecureState(context());
+        JSONObject item=new JSONObject().put("id","remote-channel").put("name","Canal remoto").put("kind","live").put("group","Prueba").put("url","https://example.invalid/live/1.ts");
+        JSONObject account=new JSONObject().put("id","remote").put("name","Prueba control").put("type","m3u").put("config",new JSONObject().put("refreshOnEntry",false)).put("items",new JSONArray().put(item));
+        JSONObject data=new JSONObject().put("accounts",new JSONArray().put(account)).put("favorites",new JSONObject());
+        String token=state.begin();state.append(token,data.toString().getBytes(StandardCharsets.UTF_8));state.finish(token);state.close();
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            AtomicReference<MainActivity> a=new AtomicReference<>();scenario.onActivity(a::set);
+            waitFor(()->"true".equals(js(a.get(),"!!document.querySelector('.account-open') && !document.querySelector('#startup-intro')")));
+            js(a.get(),"document.querySelector('.account-open').focus()");
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);
+            waitFor(()->"true".equals(js(a.get(),"!document.querySelector('.app').hidden")));
+            js(a.get(),"document.querySelector('[data-open=live]').focus();window.__remotePlayed=false;window.androidHost.play=async()=>{window.__remotePlayed=true;}");
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);
+            waitFor(()->"true".equals(js(a.get(),"!document.querySelector('#library-view').hidden")));
+            js(a.get(),"document.querySelector('.content-play').focus()");
+            waitFor(()->"true".equals(js(a.get(),"document.querySelector('.favorite').tabIndex===-1 && getComputedStyle(document.querySelector('.content-card')).outlineStyle!=='none'")));
+            InstrumentationRegistry.getInstrumentation().sendKeySync(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DPAD_CENTER));
+            Thread.sleep(900);
+            InstrumentationRegistry.getInstrumentation().sendKeySync(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_DPAD_CENTER));
+            waitFor(()->"true".equals(js(a.get(),"document.querySelector('.favorite').getAttribute('aria-pressed')==='true'")));
+            assertEquals("false",js(a.get(),"window.__remotePlayed"));
+            waitFor(()->"true".equals(js(a.get(),"document.activeElement.matches('.content-play')")));
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);
+            waitFor(()->"true".equals(js(a.get(),"window.__remotePlayed")));
+        } finally {new File(context().getFilesDir(),"accounts.enc").delete();}
+    }
     Intent playback(boolean multi) throws Exception {
         File fixture=new File(context().getCacheDir(),"native-test.mkv");try(InputStream in=InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("dual-ac3-subtitles.mkv");OutputStream out=new FileOutputStream(fixture)){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}
         JSONObject item=new JSONObject().put("id","fixture").put("name","Prueba AC3").put("kind","movie").put("url",android.net.Uri.fromFile(fixture).toString());

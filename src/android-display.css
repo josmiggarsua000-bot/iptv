@@ -66,3 +66,10 @@ html.android-app.android-tv .series-detail .episodes{grid-template-columns:repea
 html.android-app.android-tv .app.is-home .sidebar{display:none}
 @media(max-height:420px){html.android-app.android-tv .account-portals .portal{height:130px}html.android-app.android-tv .home-welcome h1{font-size:22px}html.android-app.android-tv .app.is-home #home-view{gap:6px}html.android-app.android-tv .app.is-home .account-summary{padding:5px 10px}}
 @media(max-height:420px){html.android-app.android-tv .home-welcome p{display:none}html.android-app.android-tv .app.is-home .topbar{min-height:32px;padding:3px 0;margin-bottom:6px}html.android-app.android-tv .app.is-home #home-view{gap:3px}html.android-app.android-tv .account-portals .portal small{font-size:7px;margin-top:5px;letter-spacing:0}html.android-app.android-tv .account-portals .portal strong{font-size:12px}html.android-app.android-tv .account-portals .portal{padding:10px}}
+
+#tv-remote-help{display:none}
+html.android-app.android-tv #tv-remote-help{display:block;color:#b9a6cf;font-size:clamp(10px,1vw,14px);margin:0 0 16px}
+html.android-app.android-tv .content-card:has(.content-play:focus){border-color:#54f5ff;outline:3px solid #54f5ff;outline-offset:2px;box-shadow:0 0 26px #34f5ff65;background:#182735}
+html.android-app.android-tv .content-card:has(.content-play:focus) .content-art{filter:brightness(1.18)}
+html.android-app.android-tv .content-card:has(.content-play:focus) .content-play>strong{color:#9afaff}
+html.android-app.android-tv .content-play:focus{outline:0}

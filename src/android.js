@@ -37,7 +37,7 @@ if (window.NexoNative) {
     if (!document.querySelector('.app').hidden) { document.querySelector(document.querySelector('#home-view').hidden ? '[data-view="home"]' : '#change-account').click(); return true; }
     return false;
   };
-  const visible = el => { const r = el?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  const visible = el => { const r = el?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' && !(document.documentElement.classList.contains('android-tv') && el.matches('.favorite')); };
   let lastFocus = null, focusScheduled = false;
   document.addEventListener('focusin', event => {
     const el = event.target;
@@ -45,6 +45,7 @@ if (window.NexoNative) {
   });
   const restoreFocus = () => {
     focusScheduled = false;
+    for (const star of document.querySelectorAll('.favorite')) star.tabIndex = document.documentElement.classList.contains('android-tv') ? -1 : 0;
     if (!document.documentElement.classList.contains('android-tv') || document.querySelector('#startup-intro') || document.documentElement.classList.contains('android-setup-pending')) return;
     if (document.activeElement !== document.body && visible(document.activeElement)) return;
     const scope = document.querySelector('dialog[open]') || document;
@@ -54,10 +55,35 @@ if (window.NexoNative) {
     (remembered || preferred || controls[0])?.focus({ preventScroll: true });
   };
   new MutationObserver(() => { if (!focusScheduled) { focusScheduled = true; requestAnimationFrame(restoreFocus); } }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden','open'] });
+  const hint = document.createElement('p'); hint.id = 'tv-remote-help'; hint.textContent = 'OK: abrir · Mantén OK presionado: agregar o quitar de favoritos';
+  document.querySelector('#channels').before(hint);
+  const feedback = document.createElement('span'); feedback.className = 'sr-only'; feedback.setAttribute('role','status'); document.body.append(feedback);
+  let heldOK = null;
+  const cancelHeldOK = () => { if (heldOK) clearTimeout(heldOK.timer); heldOK = null; };
+  window.addEventListener('blur', cancelHeldOK);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelHeldOK(); });
+  document.addEventListener('keyup', event => {
+    if (event.key !== 'Enter' || !heldOK) return;
+    event.preventDefault(); const press = heldOK; cancelHeldOK();
+    if (!press.long && press.target.isConnected && document.activeElement === press.target) press.target.click();
+  });
   document.addEventListener('keydown', event => {
     if ((!document.documentElement.classList.contains('android-tv') && !document.querySelector('#display-mode-dialog[open]')) || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Enter'].includes(event.key)) return;
-    if (document.activeElement?.matches('select') || (document.activeElement?.matches('input,textarea') && !['ArrowUp','ArrowDown'].includes(event.key))) return;
-    if (event.key === 'Enter') { if (document.activeElement?.matches('button,a')) { event.preventDefault(); document.activeElement.click(); } return; }
+    if (document.activeElement?.matches('select') || (document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]),textarea') && !['ArrowUp','ArrowDown'].includes(event.key))) return;
+    if (event.key === 'Enter' && (heldOK || document.activeElement?.matches('.content-play'))) {
+      event.preventDefault();
+      if (!heldOK && !event.repeat) {
+        const target = document.activeElement, press = { target, long: false, timer: null }; heldOK = press;
+        press.timer = setTimeout(() => {
+          if (heldOK !== press || document.activeElement !== target || !target.isConnected) return;
+          press.long = true; const star = target.closest('.content-card')?.querySelector('.favorite');
+          if (star) { feedback.textContent = star.getAttribute('aria-pressed') === 'true' ? 'Quitado de favoritos' : 'Agregado a favoritos'; star.click(); }
+        }, 650);
+      }
+      return;
+    }
+    if (event.key === 'Enter' && event.repeat) { event.preventDefault(); return; }
+    if (event.key === 'Enter') { if (document.activeElement?.matches('button,a,input[type=checkbox],input[type=radio]')) { event.preventDefault(); document.activeElement.click(); } return; }
     const scope = document.querySelector('dialog[open]') || document;
     const candidates = [...scope.querySelectorAll('button:not(:disabled),a[href],input,select')].filter(visible);
     const current = document.activeElement, rect = current?.getBoundingClientRect();

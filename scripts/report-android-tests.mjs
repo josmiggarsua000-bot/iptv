@@ -1,0 +1,3 @@
+import { readdir, readFile } from 'node:fs/promises';
+async function scan(path) { let files;try{files=await readdir(path,{withFileTypes:true});}catch{return;}for(const entry of files){const file=path+'/'+entry.name;if(entry.isDirectory())await scan(file);else if(entry.name.endsWith('.xml')){const text=await readFile(file,'utf8');for(const match of text.matchAll(/<(?:failure|error)\b[^>]*>([\s\S]*?)<\/(?:failure|error)>/g)){const message=match[1].replace(/<[^>]*>/g,'').slice(0,2000).replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A');console.log('::error title=Android test::'+message);}}}}
+await scan('android/app/build/outputs/androidTest-results');

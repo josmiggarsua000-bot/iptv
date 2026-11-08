@@ -3,3 +3,10 @@ dist/
 release/
 artifacts/
 *.log
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/app/src/main/assets/public/
+*.jks
+*.keystore

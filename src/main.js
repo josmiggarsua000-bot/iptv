@@ -1,3 +1,4 @@
+import './android.js';
 import { createPlayer } from './player.js';
 import { setupPlayerHud } from './player-hud.js';
 import { accountStatus } from './account-status.js';
@@ -80,7 +81,7 @@ for (const button of document.querySelectorAll('[data-type]')) button.onclick = 
   $('#playlist-url').disabled = accountType !== 'm3u-url';
   $('#playlist-file').disabled = accountType !== 'm3u-file';
   for (const id of ['server-url', 'username', 'password']) $(`#${id}`).disabled = accountType !== 'xtream';
-  $('#storage-note').textContent = window.desktop?.saveState ? 'Las cuentas se guardan cifradas en este equipo con la protección de Windows.' : 'Modo navegador: las cuentas y contraseñas se guardan en este navegador sin cifrado. Usa la aplicación de Windows si necesitas almacenamiento protegido.';
+  $('#storage-note').textContent = window.androidHost ? 'Las cuentas se guardan cifradas en este dispositivo.' : window.desktop?.saveState ? 'Las cuentas se guardan cifradas en este equipo con la protección de Windows.' : 'Modo navegador: las cuentas y contraseñas se guardan en este navegador sin cifrado. Usa la aplicación de Windows si necesitas almacenamiento protegido.';
   $('#account-name').focus();
 };
 $('#playlist-file').onchange = () => { $('#file-name').textContent = $('#playlist-file').files[0]?.name || 'Ningún archivo seleccionado'; if ($('#playlist-file').files.length) $('#playlist-url').value = ''; };
@@ -333,7 +334,7 @@ function playItem(item, queue = null) {
   updatePlayerNavigation();
   const version = playbackVersion;
   $('#watch-area').hidden = false; $('#track-controls').hidden = true; $('#player-settings-toggle').setAttribute('aria-expanded', 'false'); $('#placeholder').hidden = true; video.hidden = false; $('#current-name').textContent = item.name;
-  player = createPlayer(video, { status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
+  player = createPlayer(video, { queue: () => playbackQueue, program: () => epg.programFor(current), status: message => { if (version === playbackVersion) $('#playback-status').textContent = message; }, changed: updateTracks });
   player.play(item, account()?.config.url); updateTracks();
   if (item.kind === 'live') epg.showPlaying();
   if (seriesItem) { $('#season-select').value = item.season; renderEpisodes(); }
@@ -356,6 +357,7 @@ function changePlaying(step) {
   const item = index >= 0 && playbackQueue[index + step];
   if (item) playItem(item, playbackQueue);
 }
+window.addEventListener('nexo:selection', event => { const item = playbackQueue.find(i => i.id === event.detail.id); if (!item) return; current = item; $('#current-name').textContent = item.name; updatePlayerNavigation(); if (item.kind === 'live') epg.showPlaying(); if (seriesItem) { $('#season-select').value = item.season; renderEpisodes(); } });
 $('#player-previous').onclick = () => changePlaying(-1);
 $('#player-next').onclick = () => changePlaying(1);
 const intro = $('#startup-intro');

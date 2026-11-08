@@ -1,6 +1,8 @@
+import { setupAndroidMultiscreen } from './android-player.js';
 import { createPlayer } from './player.js';
 import { filterChannels } from './playlist.js';
 export function setupMultiscreen(getAccount) {
+  if (window.androidHost) return setupAndroidMultiscreen(getAccount);
   const $ = s => document.querySelector(s);
   const slots = []; let target = 0;
   for (let index = 0; index < 4; index++) {

@@ -1,10 +1,12 @@
 import Hls from 'hls.js';
+import { createAndroidPlayer } from './android-player.js';
 import mpegts from 'mpegts.js';
 import { subtitleVtt } from './subtitles.js';
 import { createCompatibilityPlayer } from './compat-player.js';
 import { transport } from './transport.js';
 mpegts.LoggingControl.enableAll = false;
-export function createPlayer(video, { status = () => {}, changed = () => {} } = {}) {
+export function createPlayer(video, { status = () => {}, changed = () => {}, queue, program } = {}) {
+  if (window.androidHost) return createAndroidPlayer(video, { status, changed, queue, program });
   let hls = null, ts = null, disposed = false, externalTrack = null, externalUrl = null, compat = null, prepared = null, currentItem = null, sourceHint = '', externalCues = null, externalOffset = NaN;
   const listeners = [];
   const on = (target, name, listener) => { target?.addEventListener(name, listener); listeners.push(() => target?.removeEventListener(name, listener)); };

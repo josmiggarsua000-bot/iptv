@@ -108,6 +108,7 @@ export function setupEpg({ getAccount, updateConfig, getCategory = () => '', get
     container.replaceChildren(); container.hidden = !channel || !a;
     if (!channel || !a) return;
     const epg = data();
+    if (window.androidHost) void window.androidHost.program({ id: channel.id, ...(epg ? currentPrograms(epg, channel) : {}) }).catch(() => {});
     if (!epg) { container.append(node('p', !resolveEpgUrl(a) ? 'Sin guía EPG configurada para esta cuenta.' : errors.get(a.id) || 'Cargando programación del canal…', 'muted')); return; }
     const { current, next } = currentPrograms(epg, channel);
     if (!current && !next) { container.append(node('p', 'No hay programación asociada a este canal.', 'muted')); return; }
@@ -144,5 +145,5 @@ export function setupEpg({ getAccount, updateConfig, getCategory = () => '', get
     pending = { key, ticket, promise }; return promise;
   }
   setInterval(() => { if (!$('#epg-view').hidden && getAccount()) render(); renderPlaying(); }, 60000);
-  return { load, render, renderPlaying, showPlaying() { renderPlaying(); if (getPlaying() && resolveEpgUrl(getAccount())) void load(); }, reset() { generation++; pending = null; limit = 120; offset = 0; $('#epg-search').value = ''; $('#epg-programs').replaceChildren(); $('#epg-reload').disabled = false; $('#epg-status').textContent = ''; renderPlaying(); } };
+  return { programFor(channel) { const epg = data(); return channel?.kind === 'live' ? { id: channel.id, ...(epg ? currentPrograms(epg, channel) : {}) } : null; }, load, render, renderPlaying, showPlaying() { renderPlaying(); if (getPlaying() && resolveEpgUrl(getAccount())) void load(); }, reset() { generation++; pending = null; limit = 120; offset = 0; $('#epg-search').value = ''; $('#epg-programs').replaceChildren(); $('#epg-reload').disabled = false; $('#epg-status').textContent = ''; renderPlaying(); } };
 }

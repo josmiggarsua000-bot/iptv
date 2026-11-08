@@ -1,0 +1,22 @@
+import { chromium } from 'playwright';
+import { spawn } from 'node:child_process';
+import assert from 'node:assert/strict';
+const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5186','--strictPort'],{stdio:'pipe'});let browser;
+try{
+ await new Promise(resolve=>vite.stdout.on('data',data=>{if(data.toString().includes('5186'))resolve()}));
+ browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ for(const tv of [false,true]){
+  const page=await browser.newPage({viewport:tv?{width:1920,height:1080}:{width:390,height:844}});
+  await page.route('https://appassets.androidplatform.net/native/state',route=>route.fulfill({status:200,headers:{'Access-Control-Allow-Origin':'*','Content-Type':'application/json'},body:'null'}));
+  await page.addInitScript(tv=>{window.NexoNative={isTv:()=>tv,stateChunk:()=> 'ok',request:(id,method,raw)=>{const args=JSON.parse(raw);if(method==='play')window.testPlayback=args;queueMicrotask(()=>window.__nexoReply({id,ok:method!=='fetch',result:method==='stateBegin'?'test-token':null,error:'Prueba sin conexión al proveedor'}));}};},tv);
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:5186');await page.waitForSelector('#startup-intro',{state:'detached'});
+  if(tv){await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'picker-add');await page.keyboard.press('Enter');}else await page.locator('#picker-add').click();
+  await page.locator('[data-type="m3u-file"]').click();await page.locator('#account-name').fill(tv?'Cuenta Android TV':'Cuenta de mi celular');await page.locator('#playlist-file').setInputFiles({name:'fixture.m3u',mimeType:'text/plain',buffer:Buffer.from('#EXTM3U\n#EXTINF:-1 group-title="TV",Canal Android\nhttps://example.invalid/live/u/p/1.ts\n#EXTINF:-1 group-title="TV",Canal dos\nhttps://example.invalid/live/u/p/2.ts')});await page.locator('#account-submit').click();await page.waitForSelector('#account-dialog',{state:'hidden'});
+  assert.equal(await page.locator('.app').isVisible(),true);await page.screenshot({path:`artifacts/android-${tv?'tv':'celular'}-inicio.png`,fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
+  await page.screenshot({path:`artifacts/android-${tv?'tv':'celular'}-inicio.png`,fullPage:true});
+  await page.locator('[data-open="live"]').click();await page.getByRole('button',{name:'Reproducir Canal Android',exact:true}).click();
+  await page.waitForFunction(()=>window.testPlayback?.item?.name==='Canal Android');assert.equal(await page.evaluate(()=>window.testPlayback.queue.length),2);assert.equal(await page.locator('.android-open-player').isVisible(),true);
+  assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('Android UI: celular 390px sin desbordamiento, TV con D-pad/Enter, cuentas, M3U y envío al reproductor nativo: OK');
+}finally{await browser?.close();vite.kill()}

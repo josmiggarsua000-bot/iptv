@@ -1,0 +1,10 @@
+Nexo IPTV Android uses LibVLC Android 3.6.5 by VideoLAN and contributors.
+Artifact: org.videolan.android:libvlc-all:3.6.5 (Maven Central).
+License declared by its distribution: GNU Lesser General Public License 2.1.
+The LGPL 2.1 and GPL 2 license texts accompany this notice.
+Upstream library, JNI bridge, build scripts and native source references:
+https://code.videolan.org/videolan/libvlcjni
+https://code.videolan.org/videolan/vlc
+Java library sources: https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.6.5/libvlc-all-3.6.5-sources.jar
+Nexo does not restrict reverse engineering for debugging modifications to the LGPL libraries.
+AndroidX libraries are distributed by Google under their respective Apache 2.0 licenses.

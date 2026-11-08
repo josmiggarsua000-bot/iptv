@@ -69,11 +69,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -memory 3072
           script: |
-            cd android && ./gradlew connectedDebugAndroidTest --stacktrace
-            adb install -r prebuilt/Nexo-IPTV-Android-${APK_VERSION}.apk
-            adb shell am start -n com.nexo.iptv/com.nexo.iptv.MainActivity
-            sleep 6
-            python3 scripts/android-release-smoke.py
+            python3 scripts/run-android-validation.py
       - name: Report Android test failures
         if: always()
         run: node scripts/report-android-tests.mjs

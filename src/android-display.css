@@ -69,7 +69,7 @@ html.android-app.android-tv .app.is-home .sidebar{display:none}
 
 #tv-remote-help{display:none}
 html.android-app.android-tv #tv-remote-help{display:block;color:#b9a6cf;font-size:clamp(10px,1vw,14px);margin:0 0 16px}
-html.android-app.android-tv .content-card:has(.content-play:focus){border-color:#54f5ff;outline:3px solid #54f5ff;outline-offset:2px;box-shadow:0 0 26px #34f5ff65;background:#182735}
-html.android-app.android-tv .content-card:has(.content-play:focus) .content-art{filter:brightness(1.18)}
-html.android-app.android-tv .content-card:has(.content-play:focus) .content-play>strong{color:#9afaff}
+html.android-app.android-tv .content-card:focus-within{border-color:#54f5ff;outline:3px solid #54f5ff;outline-offset:2px;box-shadow:0 0 26px #34f5ff65;background:#182735}
+html.android-app.android-tv .content-card:focus-within .content-art{filter:brightness(1.18)}
+html.android-app.android-tv .content-card:focus-within .content-play>strong{color:#9afaff}
 html.android-app.android-tv .content-play:focus{outline:0}

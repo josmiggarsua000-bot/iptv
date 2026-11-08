@@ -73,3 +73,13 @@ html.android-app.android-tv .content-card:focus-within{border-color:#54f5ff;outl
 html.android-app.android-tv .content-card:focus-within .content-art{filter:brightness(1.18)}
 html.android-app.android-tv .content-card:focus-within .content-play>strong{color:#9afaff}
 html.android-app.android-tv .content-play:focus{outline:0}
+/* Keep mobile navigation in normal flow, independent from desktop grid sizing. */
+html.android-app.android-phone .app{display:flex;flex-direction:column;align-items:stretch;min-height:100dvh;min-width:0;width:100%}
+html.android-app.android-phone .app .sidebar{position:static;flex:0 0 auto;width:100%;min-width:0;height:auto;min-height:0;max-height:none;overflow:hidden;border-right:0;border-bottom:1px solid #ab6aff38;padding:12px 16px}
+html.android-app.android-phone .app.is-home .sidebar{display:none}
+html.android-app.android-phone .sidebar .brand,html.android-app.android-phone .side-label,html.android-app.android-phone .side-bottom,html.android-app.android-phone .category-label{display:none}
+html.android-app.android-phone .sidebar nav{display:flex;flex:0 0 auto;min-width:0;overflow-x:auto;gap:6px}
+html.android-app.android-phone .sidebar .nav-item{flex:0 0 auto;width:auto;white-space:nowrap;margin-bottom:0}
+html.android-app.android-phone .sidebar .categories{display:flex;flex:0 0 auto;flex-direction:row;min-width:0;max-width:100%;height:auto;max-height:56px;overflow-x:auto;overflow-y:hidden;gap:6px;margin-top:8px}
+html.android-app.android-phone .sidebar .category{flex:0 0 auto;width:auto;max-width:230px;min-height:40px;gap:12px;padding:10px;border:1px solid #a48aff30}
+html.android-app.android-phone .app main{flex:1 0 auto;width:100%;min-width:0;max-width:none;padding:0 16px;margin:0}

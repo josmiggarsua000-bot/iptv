@@ -26,9 +26,10 @@ public class MainActivity extends Activity {
     static final String ORIGIN = "https://appassets.androidplatform.net";
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved); instance = new WeakReference<>(this); state = new SecureState(this);
-        web = new WebView(this); setContentView(web);
+        web = new WebView(this); android.widget.FrameLayout container = new android.widget.FrameLayout(this);
+        container.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));setContentView(container);
         web.setBackgroundColor(0xff090713);
-        web.setOnApplyWindowInsetsListener((v,insets) -> { v.setPadding(0,insets.getSystemWindowInsetTop(),0,insets.getSystemWindowInsetBottom()); return insets; });
+        container.setOnApplyWindowInsetsListener((v,insets) -> { v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom()); return insets; });
         WebSettings s = web.getSettings(); s.setUseWideViewPort(true); s.setLoadWithOverviewMode(false); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setMediaPlaybackRequiresUserGesture(false);
         s.setAllowFileAccess(false); s.setAllowContentAccess(true); s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setBuiltInZoomControls(false); s.setSupportZoom(false);

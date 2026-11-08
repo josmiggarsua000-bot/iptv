@@ -90,6 +90,14 @@ public class NexoInstrumentedTest {
             waitFor(()->"true".equals(js(a.get(),"document.activeElement.matches('.content-play')")));
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);
             waitFor(()->"true".equals(js(a.get(),"window.__remotePlayed")));
+            js(a.get(),"document.querySelector('#android-display-settings').click();document.querySelector('[data-display-mode=phone]').click()");
+            scenario.onActivity(activity->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+            waitFor(()->"true".equals(js(a.get(),"innerHeight>innerWidth && document.documentElement.classList.contains('android-phone')")));
+            for(String section:new String[]{"live","movie","series","epg"}){
+                js(a.get(),"document.querySelector('[data-view=home]').click();document.querySelector('[data-open="+section+"]').click()");
+                waitFor(()->"true".equals(js(a.get(),"document.querySelector('main').getBoundingClientRect().top<190 && document.querySelector('.sidebar').getBoundingClientRect().height<180 && document.documentElement.scrollWidth<=innerWidth+1")));
+            }
+            scenario.onActivity(activity->{int[] location=new int[2];activity.web.getLocationOnScreen(location);assertTrue("Content must be below the status bar",location[1]>0);});
         } finally {new File(context().getFilesDir(),"accounts.enc").delete();}
     }
     Intent playback(boolean multi) throws Exception {

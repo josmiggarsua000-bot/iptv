@@ -1,6 +1,8 @@
-# Nexo IPTV Android 0.1.2
+# Nexo IPTV Android 0.1.3
 
 APK para celular, tablet y Android TV / TV Box, Android 8.0 o posterior con Android System WebView actualizado. Incluye ARM de 32 y 64 bits y x86_64. No incluye cuentas, listas ni credenciales precargadas.
+
+Corregido el diseño de teléfono: TV, cine, series y EPG muestran el contenido justo debajo de la navegación, sin una franja vacía del tamaño de la pantalla. Se respetan las barras de estado y navegación de Android.
 
 La primera vez pregunta TV o teléfono/tablet y recuerda la elección. El modo TV usa cuatro accesos en una fila, márgenes seguros y controles ajustados a la resolución lógica del equipo. La navegación con control remoto mantiene el foco al cambiar de pantalla: flechas para moverse, OK para elegir, Atrás para regresar y CH+/CH− para cambiar de canal en el reproductor. En el catálogo se ilumina el recuadro completo, con compatibilidad para WebView antiguo; OK corto abre el contenido y mantener OK presionado agrega o quita de favoritos, sin detenerse en la estrella. Puedes cambiar el modo desde «Pantalla» en la selección de cuentas. Se instala sobre 0.1.0 conservando las cuentas guardadas.
 

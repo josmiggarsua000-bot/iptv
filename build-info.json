@@ -1,7 +1,7 @@
 {
-  "sourceCommit": "f1cabe855111ad2cce88fd744f02a2d7e444d9b7",
-  "sha256": "96fa182ff7d8abd7d9e67c6e1437caa196aca270d9da1403da56ceb49a05c29b",
-  "version": "0.1.2",
+  "sourceCommit": "2f44a95c390084f13b7a0e891309929c1ba0274e",
+  "sha256": "905a1ad58dcc9251ae63c4e5dcb00029d6967117d6cfbe6e05c6dcefbd269ab4",
+  "version": "0.1.3",
   "applicationId": "com.nexo.iptv",
   "certificateSha256": "42a49db518c4adf3ee8e22f471f03aad549b0cc0e1b91bf04360ad4f3de23389"
 }

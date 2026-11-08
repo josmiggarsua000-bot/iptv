@@ -1,1 +1,1 @@
-96fa182ff7d8abd7d9e67c6e1437caa196aca270d9da1403da56ceb49a05c29b  Nexo-IPTV-Android-0.1.2.apk
+905a1ad58dcc9251ae63c4e5dcb00029d6967117d6cfbe6e05c6dcefbd269ab4  Nexo-IPTV-Android-0.1.3.apk

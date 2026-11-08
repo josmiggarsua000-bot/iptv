@@ -5,7 +5,7 @@ on:
       tag:
         description: Existing version tag to build
         required: true
-        default: v0.5.0
+        default: v0.6.0
   push:
     tags: ['v*']
 permissions:
@@ -41,12 +41,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & release/Nexo-IPTV-win32-x64/resources/app.asar.unpacked/node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe -version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          npm run installer:win
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate installer and embedded icons
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          ./tests/installer.ps1 -Installer "release/Nexo-IPTV-Setup-$version-x64.exe"
       - name: Compress and checksum
         shell: pwsh
         run: |
           Compress-Archive -Path release/Nexo-IPTV-win32-x64 -DestinationPath release/Nexo-IPTV-Windows11-x64.zip
-          $hash = (Get-FileHash release/Nexo-IPTV-Windows11-x64.zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  Nexo-IPTV-Windows11-x64.zip" | Set-Content release/SHA256SUMS.txt -Encoding ascii
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          @("Nexo-IPTV-Windows11-x64.zip", "Nexo-IPTV-Setup-$version-x64.exe") | ForEach-Object {
+            $hash = (Get-FileHash "release/$_" -Algorithm SHA256).Hash.ToLower()
+            "$hash  $_"
+          } | Set-Content release/SHA256SUMS.txt -Encoding ascii
       - name: Publish version assets
         shell: pwsh
         env:
@@ -57,5 +75,6 @@ jobs:
             gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --title "Nexo IPTV $env:RELEASE_TAG" --notes-file docs/RELEASE_NOTES.md --prerelease
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          gh release upload $env:RELEASE_TAG release/Nexo-IPTV-Windows11-x64.zip release/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --clobber
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          gh release upload $env:RELEASE_TAG "release/Nexo-IPTV-Setup-$version-x64.exe" release/Nexo-IPTV-Windows11-x64.zip release/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --clobber
           exit $LASTEXITCODE

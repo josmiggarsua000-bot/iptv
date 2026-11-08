@@ -1,0 +1,13 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+if (process.platform !== 'win32') throw new Error('El instalador se compila en Windows con Inno Setup 6.');
+const root = path.join(__dirname, '..');
+const { version } = require('../package.json');
+if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('El instalador requiere una versión numérica de tres partes.');
+if (!fs.existsSync(path.join(root, 'release/Nexo-IPTV-win32-x64/Nexo-IPTV.exe'))) throw new Error('Ejecuta npm run package:win antes de compilar el instalador.');
+const compiler = [process.env.INNO_SETUP_COMPILER, ...[process.env['ProgramFiles(x86)'], process.env.ProgramFiles].filter(Boolean).map(base => path.join(base, 'Inno Setup 6', 'ISCC.exe'))].find(file => file && fs.existsSync(file));
+if (!compiler) throw new Error('No se encontró ISCC.exe. Instala Inno Setup 6 o configura INNO_SETUP_COMPILER.');
+const result = spawnSync(compiler, [`/DMyAppVersion=${version}`, path.join(root, 'installer/Nexo.iss')], { cwd: root, stdio: 'inherit', windowsHide: true });
+if (result.error) throw result.error;
+process.exit(result.status ?? 1);

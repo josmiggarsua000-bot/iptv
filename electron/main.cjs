@@ -7,6 +7,7 @@ const { createMediaEngine } = require('./media-engine.cjs');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 let mediaEngine;
+if (process.platform === "win32") app.setAppUserModelId("com.nexo.iptv");
 
 app.whenReady().then(async () => {
   const assetsDirectory = path.join(__dirname, "../dist/assets");

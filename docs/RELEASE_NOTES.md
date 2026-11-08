@@ -1,13 +1,9 @@
-## Nexo IPTV v0.5.0 · Audio y subtítulos dentro del reproductor
+## Nexo IPTV v0.6.0
 
-- Menú de video/calidad, idioma de audio, subtítulos y SRT/VTT dentro del video, también en pantalla completa.
-- Motor local FFmpeg para AC3, EAC3 y DTS: decodifica la pista elegida y entrega AAC al reproductor. Se activa automáticamente en cine/episodios cuando el análisis detecta incompatibilidad; también hay botón manual.
-- Prefiere español cuando está disponible. Desactivado es una opción de silencio, no una pista de audio inicial.
-- Extrae subtítulos integrados de texto. Los subtítulos gráficos siguen requiriendo un reproductor externo.
-- Controles de reproducción, volumen y búsqueda dentro del video para el modo compatible.
+Instalador para Windows x64 con asistente en español, icono Pulso integrado en el instalador y ejecutable, acceso en menú Inicio y opción de acceso directo en el escritorio. Instalación por usuario sin requerir Node.js ni una consola. Incluye Electron, FFmpeg y FFprobe.
 
-Validación: señal sintética con dos pistas AC3, selección inglesa comprobada por frecuencia y audio no silencioso, subtítulo español integrado, cambio de pista desde la interfaz y menú en pantalla completa. Se mantienen las pruebas de cuentas, guía, HLS/MP4 dual, TS y multiscreen. No se ha probado la película del proveedor del usuario.
+Esta versión incorpora el diseño y logo aprobados, tarjetas de cuentas con vencimiento/estado y edición mediante lápiz, control de reproducción y EPG en una barra fullscreen que se oculta después de 3 segundos, capítulos y temporadas con carátulas opcionales, sonido de arranque de un solo golpe y compatibilidad local con audio AC3.
 
-Extrae el código en una carpeta nueva. Ejecuta `npm.cmd ci` y `npm.cmd start` con Node.js 24 LTS. Las cuentas se conservan fuera del código. El motor compatible requiere ejecutar los binarios FFmpeg y FFprobe incluidos; la política de Windows puede bloquear aplicaciones sin firma.
+El instalador no está firmado digitalmente. Control Inteligente de Aplicaciones puede bloquearlo igual que el portable. Se mantiene disponible el código para iniciar mediante npm.cmd ci y npm.cmd start. No se necesita desactivar la protección de Windows para usar esa alternativa.
 
-Los binarios y avisos de terceros se describen en docs/THIRD_PARTY_MEDIA.md.
+Las cuentas se almacenan cifradas fuera de la carpeta de instalación. La desinstalación conserva los datos del perfil. El archivo SHA256SUMS.txt permite comprobar los paquetes.

@@ -57,3 +57,8 @@ dialog{border-color:#aa71ec70;box-shadow:0 0 60px #7020b32b,0 30px 100px #000a}.
 .account-portals .portal small{font-size:10px;margin-top:16px}
 @media(max-width:1050px){.account-portals .portal{min-height:295px}.account-portals .portal strong{font-size:18px}}
 @media(prefers-reduced-motion:reduce){.account-portals .portal,.account-portals .portal:before,.account-portals .portal:after{transition:none}.account-portals .portal:is(:hover,:focus-visible){transform:none}}
+/* Account avatar in the same dimensional neon style as the section artwork. */
+.account-avatar{width:54px;height:54px;border:0;border-radius:0;box-shadow:none;background:url('./assets/user-pulso.png') center/contain no-repeat;transition:filter .2s ease}
+.account-avatar:before,.account-avatar:after{display:none}
+.account-row:is(:hover,:focus-within) .account-avatar{filter:brightness(1.15) drop-shadow(0 0 6px #34f5ff40)}
+@media(prefers-reduced-motion:reduce){.account-avatar{transition:none}}

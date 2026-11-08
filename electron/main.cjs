@@ -10,7 +10,7 @@ let mediaEngine;
 
 app.whenReady().then(async () => {
   const assetsDirectory = path.join(__dirname, "../dist/assets");
-  const logoName = (await fs.readdir(assetsDirectory)).find(name => name.startsWith("nexo-pixel-") && name.endsWith(".png"));
+  const logoName = (await fs.readdir(assetsDirectory)).find(name => name.startsWith("nexo-pulso-") && name.endsWith(".png"));
   mediaEngine = createMediaEngine({ ffmpegPath, ffprobePath, fetchImpl: (url, options) => net.fetch(url, options) });
   const stateFile = path.join(app.getPath('userData'), 'accounts.enc');
   const checkSender = event => { if (event.senderFrame !== event.sender.mainFrame) throw new Error('Origen no permitido.'); };

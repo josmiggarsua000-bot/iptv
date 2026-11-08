@@ -66,6 +66,15 @@ public class MainActivity extends Activity {
         return new WebResourceResponse("application/json", "UTF-8", status, reason, headers, in);
     }
     @Override protected void onActivityResult(int request, int result, Intent intent) { super.onActivityResult(request,result,intent); if (request==11 && chooser!=null) { chooser.onReceiveValue(result==RESULT_OK && intent!=null ? new Uri[]{intent.getData()} : null); chooser=null; } }
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        // Some TV remotes deliver CENTER as a pointer activation; normalize it to
+        // a real Enter event so WebView uses the focused card and honors long OK.
+        if (event.getKeyCode()==android.view.KeyEvent.KEYCODE_DPAD_CENTER) {
+            android.view.KeyEvent enter=new android.view.KeyEvent(event.getDownTime(),event.getEventTime(),event.getAction(),android.view.KeyEvent.KEYCODE_ENTER,event.getRepeatCount(),event.getMetaState(),event.getDeviceId(),event.getScanCode(),event.getFlags(),event.getSource());
+            return super.dispatchKeyEvent(enter);
+        }
+        return super.dispatchKeyEvent(event);
+    }
     @Override public void onBackPressed() { web.evaluateJavascript("window.nexoAndroidBack ? window.nexoAndroidBack() : false", result -> { if (!"true".equals(result)) MainActivity.super.onBackPressed(); }); }
     void reply(String id, Object result, String error) {
         try { JSONObject o=new JSONObject(); o.put("id",id); o.put("ok",error==null); o.put("result",result==null?JSONObject.NULL:result); if(error!=null)o.put("error",error);

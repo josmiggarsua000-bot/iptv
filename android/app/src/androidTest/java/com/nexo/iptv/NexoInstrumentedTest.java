@@ -31,11 +31,13 @@ public class NexoInstrumentedTest {
             waitFor(()->"true".equals(js(activity.get(),"!!document.querySelector('#picker-add')?.onclick")));
             assertEquals("true",js(activity.get(),"!!window.androidHost && document.documentElement.classList.contains('android-app')"));
             waitFor(()->"true".equals(js(activity.get(),"!!document.querySelector('#display-mode-dialog')?.open")));
-            js(activity.get(),"document.querySelector('[data-display-mode=phone]').focus()");
+            js(activity.get(),"window.__keys=[];document.addEventListener('keydown',e=>window.__keys.push({key:e.key,code:e.code,focus:document.activeElement.dataset.displayMode}),true);document.querySelector('[data-display-mode=phone]').focus()");
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_LEFT);
             assertEquals("\"tv\"",js(activity.get(),"document.activeElement.dataset.displayMode"));
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);
-            waitFor(()->"true".equals(js(activity.get(),"document.documentElement.classList.contains('android-tv') && !document.querySelector('#display-mode-dialog').open")));
+            try { waitFor(()->"true".equals(js(activity.get(),"document.documentElement.classList.contains('android-tv') && !document.querySelector('#display-mode-dialog').open"))); } catch(AssertionError failure) {
+                fail("TV choice: "+js(activity.get(),"JSON.stringify({classes:document.documentElement.className,open:document.querySelector('#display-mode-dialog').open,error:document.querySelector('#display-mode-error').textContent,mode:window.NexoNative.getDisplayMode(),keys:window.__keys})"));
+            }
             assertEquals("tv",context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).getString("displayMode",""));
             assertEquals("true",js(activity.get(),"document.querySelector('#android-display-settings').click();document.querySelector('[data-display-mode=phone]').click();document.documentElement.classList.contains('android-phone')"));
             assertEquals("phone",context().getSharedPreferences("nexo.preferences",Context.MODE_PRIVATE).getString("displayMode",""));
